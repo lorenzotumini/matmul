@@ -1,0 +1,11 @@
+/build*/
+/results/
+/.cache/
+/.vscode/
+*.exe
+*.obj
+*.o
+*.pdb
+/nob
+/nob.old
+/nob.exe.old
