@@ -109,7 +109,8 @@ static bool kernel(const MatmulImplementation *impl) {
         /* M, N, K: singleton, rectangular, vector/tile tails, empty axes */
         {1, 1, 1}, {2, 4, 3}, {1, 17, 9}, {13, 1, 7}, {7, 11, 1},
         {7, 9, 15}, {16, 16, 16}, {17, 31, 33}, {33, 17, 65},
-        {65, 63, 129}, {0, 7, 3}, {4, 0, 3}, {4, 7, 0}, {0, 0, 0}
+        {65, 63, 129}, {5, 259, 263},
+        {0, 7, 3}, {4, 0, 3}, {4, 7, 0}, {0, 0, 0}
     };
     for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; ++i)
         for (uint32_t seed = 0; seed < 3; ++seed)
@@ -120,7 +121,9 @@ static bool kernel(const MatmulImplementation *impl) {
     REQUIRE(kernel_case(impl, 7, 11, 7, LEFT_IDENTITY, 42));
     REQUIRE(kernel_case(impl, 7, 11, 11, RIGHT_IDENTITY, 42));
     REQUIRE(kernel_case(impl, 3, 5, 128, CANCEL, 42));
-    printf("PASS %s (48 fixtures, each called twice)\n", impl->name);
+    /* Cross all combined-kernel tile boundaries and its parallel threshold. */
+    REQUIRE(kernel_case(impl, 129, 257, 257, RANDOM, 42));
+    printf("PASS %s (52 fixtures, each called twice)\n", impl->name);
     return true;
 }
 

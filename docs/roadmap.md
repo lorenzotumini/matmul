@@ -11,6 +11,7 @@ the concepts; it does not prescribe an implementation sequence.
 | Transposition | Preparation cost, extra storage and contiguous dot products |
 | [Cache blocking](04-blocking.md) and packing | Working sets, cache hierarchy, data layout and boundary handling |
 | [SIMD](05-simd.md) | Lanes, registers, alignment, fused operations and remainder handling |
+| [Combined CPU optimization](06-cpu-optimization.md) | Register microkernels, layered reuse, thread ownership and practical tradeoffs |
 | CPU parallelism | Work decomposition, races, scheduling, false sharing and scaling |
 | BLAS | Library interfaces, mature implementations and comparison baselines |
 | GPU computing | Thread grids, device memory, transfers, synchronization and launch overhead |

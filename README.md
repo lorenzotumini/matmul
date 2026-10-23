@@ -15,6 +15,7 @@ and measuring it against earlier versions.
 - [Compilers and generated code](docs/03-compiler.md): Optimization, dependencies, SIMD and evidence  
 - [Cache blocking and implementation selection](docs/04-blocking.md): Working sets, tiling overhead, sustained throughput and adaptive selection  
 - [Explicit SIMD and vector width](docs/05-simd.md): Intrinsics, SSE versus AVX, remainder handling and performance tradeoffs  
+- [Combining CPU optimizations](docs/06-cpu-optimization.md): Register tiles, cache reuse, thread ownership and further techniques
 
 ## Build, test, measure
 
@@ -48,8 +49,8 @@ benchmark runner. Use `./nob --help` for build options and
 
 The OpenMP backend is built when CMake finds a compatible C compiler and
 runtime. `nob bench -- --list` lists the available implementations. OpenMP
-compile options apply only to that backend; the other kernels retain their
-existing options.
+compile options apply only to parallel backends; the other kernels retain
+their existing options.
 
 In PowerShell, configure thread settings before testing and measuring:
 
@@ -64,6 +65,24 @@ These settings persist in that shell; change `OMP_NUM_THREADS` to compare
 1, 2 and 4 threads. Record both settings with the command and timings: they
 are not included in the benchmark CSV. Correct output alone does not prove
 that a loop ran in parallel; CPU profiles can show worker activity.
+
+## Combined CPU reference
+
+`cpu_combined` combines AVX, 4-by-16 register tiles, cache blocking, and OpenMP
+when available. Small workloads avoid thread-team setup. Tile sizes and
+dispatch thresholds are readable starting heuristics in `src/cpu_combined.c`,
+not a claim of optimal performance for every shape or CPU.
+
+```powershell
+$env:OMP_NUM_THREADS = "4"
+$env:OMP_DYNAMIC = "FALSE"
+.\nob.exe bench -- --impl cpu_combined --m 1024 --n 1024 --k 1024
+```
+
+AVX availability is checked before the implementation is listed or called by
+the runners. Without an OpenMP runtime it uses a serial path; `--list` identifies
+that configuration. No heap allocation, input packing, FMA or fast-math is used.
+Earlier implementations remain available for comparison.
 
 ## Save measurements
 
@@ -88,5 +107,6 @@ Keep the command, source revision, and machine details with your measurements;
 
 Support code in `tools/` can stay unread while you learn the kernel loops.
 Adding a kernel changes the CMake source list and registry; the command runner
-needs no separate build recipe. The kernels have no external library dependencies;
-Nob's helper header is vendored in `deps/nob.h`.
+needs no separate build recipe. Portable kernels have no external library
+dependencies; optional parallel backends use an OpenMP runtime. Nob's helper
+header is vendored in `deps/nob.h`.

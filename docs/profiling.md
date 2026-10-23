@@ -15,6 +15,12 @@ local testing. On other platforms the default compiler is GCC.
 Windows ETW recording may require an elevated terminal. Capture failures show
 Samply's diagnostics and return a failing status.
 
+OpenMP availability depends on the compiler/runtime combination. A GCC
+benchmark can use OpenMP while a clang-cl profiling build lacks it. Check
+`nob bench --cc clang-cl --mode profile -- --list`: the combined backend reports
+a single-thread build when OpenMP is unavailable. Interpret captures using
+their actual build features rather than assuming the benchmark's thread setup.
+
 ## Capture and inspect
 
 From the repository root:

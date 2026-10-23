@@ -32,6 +32,9 @@ void matmul_simd_avx(size_t m, size_t n, size_t k,
 /* Optional: built when an OpenMP C compiler/runtime is available. */
 void matmul_openmp(size_t m, size_t n, size_t k,
                    const float *a, const float *b, float *c);
+/* Optional AVX backend; OpenMP is used when available. */
+void matmul_cpu_combined(size_t m, size_t n, size_t k,
+                          const float *a, const float *b, float *c);
 
 typedef struct {
     const char *name;

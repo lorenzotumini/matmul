@@ -27,21 +27,33 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
     static const MatmulImplementation implementations[] = {
         {"naive", matmul_naive, "Direct definition, row-major float loops"},
         {"loop_interchange", matmul_loop_interchange, "Loop interchange to reduce cache misses"},
-        {"blocked", matmul_blocked, "Cache blocking, 32-element tiles"},
+        {"blocked", matmul_blocked, "Cache blocking with fixed-size tiles"},
 #if defined(__x86_64__) || defined(_M_X64)
         {"simd_sse", matmul_simd_sse, "Four-float SSE intrinsics"},
 #endif
 #ifdef MATMUL_HAVE_OPENMP
-        {"openmp", matmul_openmp, "Row ownership (serial scaffold; add OpenMP directive)"},
+        {"openmp", matmul_openmp, "OpenMP static output-row scheduling"},
 #endif
 #ifdef MATMUL_HAVE_AVX
-        /* Keep this optional entry last: unsupported hosts omit it by count. */
-        {"simd_avx", matmul_simd_avx, "Eight-float AVX intrinsics (exercise)"},
+        /* Keep AVX-dependent entries at the end for availability filtering. */
+        {"simd_avx", matmul_simd_avx, "Eight-float AVX intrinsics"},
+#ifdef MATMUL_HAVE_CPU_COMBINED
+#ifdef MATMUL_HAVE_OPENMP
+        {"cpu_combined", matmul_cpu_combined, "AVX register/cache tiles with OpenMP"},
+#else
+        {"cpu_combined", matmul_cpu_combined, "AVX register/cache tiles (single-thread build)"},
+#endif
+#endif
 #endif
     };
     *count = sizeof implementations / sizeof implementations[0];
 #ifdef MATMUL_HAVE_AVX
-    if (!avx_available()) --*count;
+    if (!avx_available()) {
+        --*count;
+#ifdef MATMUL_HAVE_CPU_COMBINED
+        --*count;
+#endif
+    }
 #endif
     return implementations;
 }
