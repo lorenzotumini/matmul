@@ -10,12 +10,11 @@ and measuring it against earlier versions.
 
 ## Concept summaries
 
-| Summary | Focus |
-| --- | --- |
-| [01 — Matrix multiplication basics](docs/01-definition.md) | Shapes, indexing, correctness and arithmetic cost |
-| [02 — Loop order and memory access](docs/02-loop-interchange.md) | Locality, reuse, initialization and performance interpretation |
-| [03 — Compilers and generated code](docs/03-compiler.md) | Optimization, dependencies, SIMD and evidence |
-| [04 — Cache blocking and implementation selection](docs/04-blocking.md) | Working sets, tiling overhead, sustained throughput and adaptive selection |
+- [Matrix multiplication basics](docs/01-definition.md): Shapes, indexing, correctness and arithmetic cost  
+- [Loop order and memory access](docs/02-loop-interchange.md): Locality, reuse, initialization and performance interpretation  
+- [Compilers and generated code](docs/03-compiler.md): Optimization, dependencies, SIMD and evidence  
+- [Cache blocking and implementation selection](docs/04-blocking.md): Working sets, tiling overhead, sustained throughput and adaptive selection  
+- [Explicit SIMD and vector width](docs/05-simd.md): Intrinsics, SSE versus AVX, remainder handling and performance tradeoffs  
 
 ## Build, test, measure
 

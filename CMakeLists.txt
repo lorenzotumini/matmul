@@ -9,8 +9,37 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(matmul STATIC src/registry.c
             src/naive.c
 		    src/loop_interchange.c
-            src/blocked.c)
+            src/blocked.c
+            src/simd_sse.c)
 target_include_directories(matmul PUBLIC include)
+
+# AVX is optional and applies only to its own source file. Feature detection
+# and all baseline kernels must remain executable without AVX.
+option(MATMUL_ENABLE_AVX "Build the optional eight-float AVX exercise" ON)
+include(CheckCSourceCompiles)
+include(CheckCCompilerFlag)
+check_c_source_compiles("
+#if !defined(__x86_64__) && !defined(_M_X64)
+#error Not an x86-64 target
+#endif
+int main(void) { return 0; }
+" MATMUL_TARGET_X86_64)
+if(MATMUL_ENABLE_AVX AND MATMUL_TARGET_X86_64)
+    if(MSVC)
+        set(matmul_avx_flag /arch:AVX)
+    elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        set(matmul_avx_flag -mavx)
+    endif()
+    if(DEFINED matmul_avx_flag)
+        check_c_compiler_flag("${matmul_avx_flag}" MATMUL_COMPILER_HAS_AVX)
+        if(MATMUL_COMPILER_HAS_AVX)
+            target_sources(matmul PRIVATE src/simd_avx.c)
+            set_property(SOURCE src/simd_avx.c APPEND PROPERTY
+                COMPILE_OPTIONS "${matmul_avx_flag}")
+            target_compile_definitions(matmul PRIVATE MATMUL_HAVE_AVX=1)
+        endif()
+    endif()
+endif()
 
 # Support code is separate from the kernels you will study.
 add_library(lab_support STATIC tools/lab.c)
