@@ -15,6 +15,7 @@ and measuring it against earlier versions.
 | [01 — Matrix multiplication basics](docs/01-definition.md) | Shapes, indexing, correctness and arithmetic cost |
 | [02 — Loop order and memory access](docs/02-loop-interchange.md) | Locality, reuse, initialization and performance interpretation |
 | [03 — Compilers and generated code](docs/03-compiler.md) | Optimization, dependencies, SIMD and evidence |
+| [04 — Cache blocking and implementation selection](docs/04-blocking.md) | Working sets, tiling overhead, sustained throughput and adaptive selection |
 
 ## Build, test, measure
 

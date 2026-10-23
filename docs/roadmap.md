@@ -9,7 +9,7 @@ the concepts; it does not prescribe an implementation sequence.
 | [Loop order](02-loop-interchange.md) | Strides, locality, cache lines, reuse and dependencies |
 | [Compilers](03-compiler.md) | Translation, optimization, alias analysis, vectorization and assembly |
 | Transposition | Preparation cost, extra storage and contiguous dot products |
-| Cache blocking and packing | Working sets, cache hierarchy, data layout and boundary handling |
+| [Cache blocking](04-blocking.md) and packing | Working sets, cache hierarchy, data layout and boundary handling |
 | SIMD | Lanes, registers, alignment, fused operations and remainder handling |
 | CPU parallelism | Work decomposition, races, scheduling, false sharing and scaling |
 | BLAS | Library interfaces, mature implementations and comparison baselines |

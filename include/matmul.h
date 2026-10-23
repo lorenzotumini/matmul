@@ -22,6 +22,8 @@ void matmul_naive(size_t m, size_t n, size_t k,
                   const float *a, const float *b, float *c);
 void matmul_loop_interchange(size_t m, size_t n, size_t k,
                   const float *a, const float *b, float *c);
+void matmul_blocked(size_t m, size_t n, size_t k,
+                    const float *a, const float *b, float *c);
 
 typedef struct {
     const char *name;

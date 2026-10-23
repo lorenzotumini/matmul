@@ -8,7 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(matmul STATIC src/registry.c
             src/naive.c
-		    src/loop_interchange.c)
+		    src/loop_interchange.c
+            src/blocked.c)
 target_include_directories(matmul PUBLIC include)
 
 # Support code is separate from the kernels you will study.
