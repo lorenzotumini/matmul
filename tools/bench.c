@@ -19,6 +19,7 @@ static void usage(void) {
          "  --csv                  Write CSV to stdout; metadata to stderr\n"
          "  --profile              Repeat one --impl without the oracle/checks;\n"
          "                         run correctness tests separately first\n"
+         "  --validate-only        Check the requested inputs once, without timing\n"
          "  --help                 Show this help");
 }
 
@@ -126,7 +127,7 @@ int main(int argc, char **argv) {
     size_t m = 256, n = 256, k = 256, repeats = 7, warmup = 2, batch = 1;
     size_t seed = 42;
     const char *selected = "all";
-    bool csv = false, profiling = false;
+    bool csv = false, profiling = false, validate_only = false;
     size_t count;
     const MatmulImplementation *impls = matmul_implementations(&count);
     for (int i = 1; i < argc; ++i) {
@@ -139,6 +140,7 @@ int main(int argc, char **argv) {
         }
         if (strcmp(arg, "--csv") == 0) { csv = true; continue; }
         if (strcmp(arg, "--profile") == 0) { profiling = true; continue; }
+        if (strcmp(arg, "--validate-only") == 0) { validate_only = true; continue; }
         if (strcmp(arg, "--impl") == 0) {
             if (++i >= argc) { fprintf(stderr, "Missing implementation name.\n"); return 1; }
             selected = argv[i];
@@ -167,6 +169,10 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < count; ++i)
         if (strcmp(selected, impls[i].name) == 0) found = true;
     if (!found) { fprintf(stderr, "Unknown implementation: %s\n", selected); return 1; }
+    if (validate_only && csv) {
+        fprintf(stderr, "--validate-only does not produce benchmark CSV.\n");
+        return 1;
+    }
     if (profiling && (csv || strcmp(selected, "all") == 0 || repeats > SIZE_MAX / batch)) {
         fprintf(stderr, "--profile requires one named --impl, no --csv, "
                         "and repeats * batch fitting size_t.\n");
@@ -174,17 +180,17 @@ int main(int argc, char **argv) {
     }
 
     LabProblem p;
-    bool allocated = profiling ? lab_create_workload(&p, m, n, k) :
+    bool allocated = profiling && !validate_only ? lab_create_workload(&p, m, n, k) :
                                  lab_create(&p, m, n, k);
     if (!allocated) {
         fprintf(stderr, "Matrix dimensions overflow or allocation failed.\n");
         return 1;
     }
     lab_randomize(&p, (uint32_t)seed);
-    if (!profiling) lab_reference(&p);
+    if (!profiling || validate_only) lab_reference(&p);
     fprintf(stderr, "mode=%s compiler=%s build=%s M=%zu N=%zu K=%zu seed=%zu "
                     "repeats=%zu warmup=%zu batch=%zu\n",
-            profiling ? "profile" : "benchmark", LAB_COMPILER, LAB_BUILD,
+            validate_only ? "validate" : profiling ? "profile" : "benchmark", LAB_COMPILER, LAB_BUILD,
             m, n, k, seed, repeats, warmup, batch);
     if (csv) puts("implementation,compiler,build,m,n,k,seed,repeats,warmup,batch,"
                   "min_ms,median_ms,max_ms,gflops,checksum");
@@ -192,9 +198,17 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < count; ++i) {
         if (strcmp(selected, "all") != 0 && strcmp(selected, impls[i].name) != 0)
             continue;
-        bool passed = profiling ? profile(&impls[i], &p, repeats, warmup, batch) :
+        bool passed;
+        if (validate_only) {
+            lab_poison(&p);
+            impls[i].run(m, n, k, p.a, p.b, p.c);
+            passed = lab_check(&p, impls[i].name);
+            if (passed) printf("Validated %s\n", impls[i].name);
+        } else {
+            passed = profiling ? profile(&impls[i], &p, repeats, warmup, batch) :
                                   measure(&impls[i], &p, repeats, warmup, batch,
                                           (uint32_t)seed, csv);
+        }
         if (!passed)
             ok = false;
     }

@@ -1,112 +1,113 @@
-# Minimal profiling workflow
+# Profiling through Nob
 
-The first useful loop is: implement, test, benchmark, profile, change one thing,
-then test and benchmark again. Start with the first kernel. No profiler is
-needed to complete that exercise.
-
-## 1. Measure speed with the benchmark
-
-Use the Release build and commands in the README. Keep a CSV result and the
-exact command. Profilers add overhead; their execution times should not replace
-ordinary benchmark measurements.
-
-## 2. Build optimized code with symbols
-
-CMake's `RelWithDebInfo` configuration keeps optimization and debug information.
-The GNU-style build also keeps frame pointers in this configuration to help
-stack unwinding. Use a separate build directory:
+Use three everyday commands:
 
 ```powershell
-.\nob.exe build --mode profile
-.\nob.exe test --mode profile
+.\nob.exe test
+.\nob.exe bench -- --impl all --m 256 --n 256 --k 256
+.\nob.exe profile -- --impl naive
 ```
 
-This is useful for debugging and assembly inspection. For Windows profilers,
-use PDB symbols from MSVC or clang-cl. The convolution project already used
-clang-cl with Samply. In an **x64 Visual Studio Developer terminal**, build:
+`test` checks correctness. `bench` measures speed. `profile` records CPU samples
+that explain where execution spends time. Every command builds first.
+
+## Capture a profile
+
+`nob profile` now performs the complete capture workflow:
+
+1. Builds optimized code with debug symbols (`RelWithDebInfo`).
+2. Runs the shared tests on that exact build.
+3. Validates the selected implementation against the double reference at the
+   requested dimensions and seed, once, before recording.
+4. Runs Samply on the repeated multiplication process.
+5. Saves the profile, resolved-symbol sidecar, and exact capture command.
+
+Compilation, tests and the reference calculation are outside the capture.
+The captured process still includes allocation, input generation, warmup and
+cleanup. Select the kernel (for example `matmul_naive`) when examining samples.
+
+Defaults are the `naive` implementation, 256-by-256 matrices, 200 measured calls,
+and the `profile` build mode. Increase repeats for faster implementations so
+the workload runs for a few seconds:
 
 ```powershell
-.\nob.exe build --cc clang-cl --mode profile
-.\nob.exe test --cc clang-cl --mode profile
+.\nob.exe profile -- --impl naive --m 256 --n 256 --k 256 --repeats 500
 ```
 
-Keep the executable, PDB files, source, and build configuration together with
-the capture. If the profile displays only addresses, fix symbol resolution
-before drawing conclusions. `RelWithDebInfo` may use different optimization
-flags from Release; compare performance using the same build configuration.
-
-## 3. Capture a focused workload with Samply
-
-Once the tests pass, first try the workload directly:
+The command saves a unique `results/profile-<timestamp>-<id>.json.gz` file by
+default. It prints the path when finished. To choose a name:
 
 ```powershell
-.\nob.exe profile --cc clang-cl -- --impl naive --m 256 --n 256 --k 256 --repeats 200 --batch 10
+.\nob.exe profile --output results\naive-baseline.json.gz -- --impl naive
 ```
 
-Increase/decrease the repeat count so the multiplication lasts a few seconds.
-Then capture it using the already installed [Samply](https://github.com/mstange/samply):
+Existing capture files or sidecars are protected from overwrite. For custom
+output directories other than `results/`, create the parent directory first.
+
+The normal console shows short build/check statuses and the saved profile path.
+Successful setup output is stored in `build/<compiler>/profile/logs/`; a
+save-only capture's raw output is stored in `.stdout.log` and `.stderr.log`
+files beside the profile. Failures display their logs automatically. Add
+`--verbose` before `--` to see the commands and all logged output. With
+`--open`, Samply's viewer output stays live so its server instructions are visible.
+
+## Open the interactive viewer
+
+Add `--open` to capture and then open Samply's interactive call tree, flame
+graph, timeline and source view:
 
 ```powershell
-New-Item -ItemType Directory -Force results | Out-Null
-samply record --save-only -o results\naive.json.gz -- .\build\clang-cl\profile\matmul_bench.exe --profile --impl naive --m 256 --n 256 --k 256 --repeats 200 --batch 10
-samply load results\naive.json.gz
+.\nob.exe profile --open -- --impl naive
 ```
 
-Capture the built executable directly, rather than wrapping `nob profile` in
-Samply: otherwise the capture would include configuring and compiling too.
-`nob profile` runs the workload; it does not launch a profiler or collect counters.
+Samply keeps its local viewer server running until stopped with Ctrl+C. The
+capture is saved on disk. Without `--open`, recording finishes and exits,
+which is convenient for automated experiments.
 
-Samply on Windows may need an elevated terminal for ETW recording. The saved
-profile can be opened again later, and its JSON is available for programmatic
-inspection. Keep the matching binaries and symbols so both of us can resolve
-sampled addresses. A capture is useful only after an actual kernel exists;
-profiling the unfinished placeholder cannot explain multiplication performance.
-
-`--profile` runs only one named implementation. It allocates A/B/C, generates
-inputs and warms up, then repeats the kernel without the double oracle,
-per-call timers, validation or printing in the loop. The final checksum makes
-output observable; it is not a correctness test. Nonfinite output fails, but
-finite wrong answers still require the shared tests to catch them.
-
-The profiler still captures whole-process setup and cleanup. Select
-`matmul_naive` in the call tree and inspect its callers/source. Check whether
-time is in the multiplication or an unexpected helper. CPU samples show where
-execution spends time, not whether cache misses or compute throughput caused it.
-
-## 4. Use VTune when the question needs hardware counters
-
-For cache behavior, bandwidth, memory stalls and instruction execution,
-[Intel VTune](https://www.intel.com/content/www/us/en/docs/vtune-profiler/user-guide/2024-0/running-command-line-analysis.html)
-is the next tool to evaluate. It was not on this shell's PATH during initial
-inspection. Installation and hardware-counter availability must be checked
-before assuming a particular analysis works.
-
-Once available, its basic CLI workflow is:
+To reopen a saved capture later, use the path printed by Nob:
 
 ```powershell
-vtune -collect hotspots -result-dir results\vtune-naive -- .\build\clang-cl\profile\matmul_bench.exe --profile --impl naive --m 256 --n 256 --k 256 --repeats 200 --batch 10
-vtune -report summary -result-dir results\vtune-naive -format csv -report-output results\vtune-naive-summary.csv
+samply load results\naive-baseline.json.gz
 ```
 
-Use a fresh result directory for each experiment. Later try Memory Access or
-Microarchitecture Exploration when supported. Analyze the kernel region,
-rather than attributing process startup or random-data generation to it.
+## Requirements and symbols
 
-For now, write down a specific question: "Did loop interchange reduce cache
-misses?" or "Is memory bandwidth saturated?" High CPU usage alone cannot answer
-either question. Requested allocation bytes, resident memory, and bytes moved
-through caches/RAM are different measurements.
+[Samply](https://github.com/mstange/samply) must be on PATH. On this Windows
+machine, an actual capture was verified with Samply 0.13.1 and clang-cl/PDB
+symbols. Captures resolved `matmul_naive` and its source file.
 
-## Keep just enough evidence
+On Windows, `nob profile` defaults to **clang-cl**; other actions default to
+GCC. A working Visual Studio C toolchain and Windows SDK are needed. If compiler
+discovery fails, run from an x64 Visual Studio Developer terminal. `--cc msvc`
+is also accepted for Windows captures. MinGW GCC captures were tested but did
+not resolve kernel symbols, so the profile command rejects that combination.
+On other platforms the default remains GCC.
 
-For an experiment, save the benchmark CSV, profile, matching binaries/symbols,
-and a small text note containing:
+Windows ETW recording may require an elevated terminal. If capture fails, Nob
+returns failure and preserves the profiler's error message; it does not treat
+an ordinary workload run as a successful capture.
 
-- The commands and source revision (or the changed source if no Git revision).
-- Compiler/build/flags, matrix dimensions, seed, warmup, repeats and batch.
-- The question, observation, and next change to test.
+The resolved-symbol sidecar uses Samply's `--unstable-presymbolicate` option.
+Keep it beside the profile, along with the `.command.txt` note. Preserve the
+matching executable/PDB and source revision for long-term source-level analysis;
+resolved symbols do not snapshot source files. Both the compressed profile and
+symbol JSON can be inspected programmatically.
 
-The existing `results/` ignore rule keeps these local. There is no custom
-dashboard, allocation tracker, cache simulator, or GPU integration at this
-stage. Add one when an implementation raises a question the current workflow
-cannot answer. GPU compatibility notes remain in `roadmap.md`.
+## What profiling tells us
+
+Start with a question: is time in the kernel, allocation, a helper, or a wait?
+CPU samples locate hotspots. They do not by themselves measure cache misses,
+memory bandwidth, or prove that the kernel is compute-bound.
+
+Use ordinary `nob bench` results for speed comparisons; profiler overhead changes
+execution time. Profile builds may use different optimization flags from Release.
+Always compare implementations using the same compiler and configuration.
+
+Intel VTune remains the next tool for cache, bandwidth and execution-stall
+questions when its hardware-counter support has been checked. No custom
+dashboard, simulator or GPU profiling integration is needed at this stage.
+
+The underlying `matmul_bench --profile` and `--validate-only` flags are internal
+parts of this workflow. You do not need to invoke the executable directly or
+wrap Nob in Samply. Build-only compiler experiments can still use
+`nob build --mode profile`; only the **profile command** records samples.

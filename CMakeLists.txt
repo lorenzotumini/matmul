@@ -33,7 +33,13 @@ if(BUILD_TESTING)
     add_test(NAME bench_bad_dimension COMMAND matmul_bench --m -1)
     add_test(NAME profile_requires_impl COMMAND matmul_bench --profile)
     add_test(NAME profile_rejects_csv COMMAND matmul_bench --profile --impl naive --csv)
+    add_test(NAME workload_validation COMMAND matmul_bench --profile --impl naive
+        --m 7 --n 9 --k 15 --validate-only)
+    set_tests_properties(workload_validation PROPERTIES PASS_REGULAR_EXPRESSION "Validated naive")
+    add_test(NAME validation_rejects_bad_repeats COMMAND matmul_bench --profile --impl naive
+        --repeats 0 --validate-only)
     set_tests_properties(bench_bad_dimension profile_requires_impl profile_rejects_csv
+        validation_rejects_bad_repeats
         PROPERTIES WILL_FAIL TRUE)
 endif()
 

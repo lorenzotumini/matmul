@@ -83,6 +83,12 @@ establish correctness; run the shared tests first. Whole-process captures
 still include allocation, data generation, warmup, and cleanup; focus analysis
 on the selected kernel. See [profiling.md](profiling.md).
 
+For everyday use, `nob profile` handles the low-level flags: it builds with
+symbols, tests the exact build, and validates the requested inputs with the
+reference outside the trace, then starts Samply. The captured workload has
+no oracle or validation between calls. Captures include resolved-symbol JSON
+and an exact command note so both people and tools can inspect them.
+
 Minimum, median and maximum show some timing variation. GFLOP/s uses the
 median. The checksum makes output observable, but correctness comes from the
 elementwise reference check, not from the checksum.

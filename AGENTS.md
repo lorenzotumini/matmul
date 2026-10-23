@@ -13,3 +13,8 @@ matrix multiplication kernels manually to understand the basics.
 - Read `docs/conventions.md` before changing the contract or measurement rules.
 - Use `nob test`, `nob bench` and `nob profile` for the everyday workflow.
   Nob delegates to CMake/CTest; keep source lists and build flags in CMake.
+- `nob profile` captures with Samply after testing and validating the requested
+  workload. On Windows it defaults to clang-cl/PDB symbols; ordinary actions
+  default to GCC. Avoid putting builds or the double oracle inside captures.
+- Nob hides successful setup output in stage logs by default. Preserve clean
+  result stdout; show diagnostics on failure and support `--verbose` for detail.
