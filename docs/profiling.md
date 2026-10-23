@@ -19,8 +19,8 @@ Samply's diagnostics and return a failing status.
 
 From the repository root:
 
-```powershell
-.\nob.exe profile -- --impl naive
+```sh
+./nob profile -- --impl naive
 ```
 
 Nob performs the following steps:
@@ -35,21 +35,21 @@ The defaults are `naive`, 256-by-256 matrices, two warmup calls, and 200 workloa
 calls. Increase `--repeats` for faster kernels so the workload runs for a few
 seconds. To capture and open the viewer:
 
-```powershell
-.\nob.exe profile --open -- --impl naive --repeats 500
+```sh
+./nob profile --open -- --impl naive --repeats 500
 ```
 
 The viewer server runs until Ctrl+C. Without `--open`, capture saves and exits.
 To choose a filename, put `--output` before `--`:
 
-```powershell
-.\nob.exe profile --output results\naive-baseline.json.gz -- --impl naive
+```sh
+./nob profile --output results/naive-baseline.json.gz -- --impl naive
 ```
 
 To reopen that capture:
 
-```powershell
-samply load results\naive-baseline.json.gz
+```sh
+samply load results/naive-baseline.json.gz
 ```
 
 The capture includes allocation, input generation, warmup, and cleanup. Focus on

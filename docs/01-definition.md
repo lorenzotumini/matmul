@@ -70,8 +70,8 @@ already owns the buffers; [the header](../include/matmul.h) defines the contract
 
 Run:
 
-```powershell
-.\nob.exe test
+```sh
+./nob test
 ```
 
 A mismatch reports the output row and column, actual value, expected value,
@@ -84,9 +84,9 @@ three products and compare each array access with your paper calculation.
 
 Once you understand the loops, check the optimized build and take a first timing:
 
-```powershell
-.\nob.exe test --mode release
-.\nob.exe bench -- --impl naive --m 256 --n 256 --k 256
+```sh
+./nob test --mode release
+./nob bench -- --impl naive --m 256 --n 256 --k 256
 ```
 
 ## Investigate your baseline
