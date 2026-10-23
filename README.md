@@ -11,8 +11,8 @@ and measuring it against earlier versions.
 
 ## Build, test, measure
 
-Install GCC, CMake 3.21 or newer, and Ninja, with each on PATH. The examples use
-Unix shell notation and run from the repository root. Compile the command runner
+Install GCC, CMake 3.21 or newer, and Ninja, with each on PATH. The examples run
+from the repository root. Compile the command runner
 once:
 
 ```sh
@@ -45,6 +45,8 @@ mkdir -p results
 ```
 
 Results go to stdout and diagnostics to stderr, so redirected CSV stays clean.
+In ordinary benchmark output, the workload header shares stdout with the result
+rows to preserve their order. In CSV mode, that header goes to stderr.
 Keep the command, source revision, and machine details with your measurements;
 
 ## Repo structure

@@ -6,7 +6,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_library(matmul STATIC src/naive.c src/registry.c)
+add_library(matmul STATIC src/registry.c
+            src/naive.c
+		    src/loop_interchange.c)
 target_include_directories(matmul PUBLIC include)
 
 # Support code is separate from the kernels you will study.

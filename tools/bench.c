@@ -74,7 +74,7 @@ static bool profile(const MatmulImplementation *impl, LabProblem *p,
 
 static bool measure(const MatmulImplementation *impl, LabProblem *p,
                     size_t repeats, size_t warmup, size_t batch,
-                    uint32_t seed, bool csv) {
+                    uint32_t seed, bool csv, int name_width) {
     lab_poison(p);
     impl->run(p->m, p->n, p->k, p->a, p->b, p->c);
     if (!lab_check(p, impl->name)) {
@@ -115,9 +115,9 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
                repeats, warmup, batch, samples[0] * 1e3, median * 1e3,
                samples[repeats - 1] * 1e3, gflops, checksum);
     } else {
-        printf("%-12s min/median/max: %.4f / %.4f / %.4f ms; "
+        printf("%-*s min/median/max: %.6g / %.6g / %.6g ms; "
                "%.3f GFLOP/s; checksum %.9g\n",
-               impl->name, samples[0] * 1e3, median * 1e3,
+               name_width, impl->name, samples[0] * 1e3, median * 1e3,
                samples[repeats - 1] * 1e3, gflops, checksum);
     }
     free(samples);
@@ -167,8 +167,14 @@ int main(int argc, char **argv) {
         return 1;
     }
     bool found = strcmp(selected, "all") == 0;
-    for (size_t i = 0; i < count; ++i)
+    int name_width = 12;
+    for (size_t i = 0; i < count; ++i) {
         if (strcmp(selected, impls[i].name) == 0) found = true;
+        if (strcmp(selected, "all") == 0 || strcmp(selected, impls[i].name) == 0) {
+            int length = (int)strlen(impls[i].name);
+            if (length > name_width) name_width = length;
+        }
+    }
     if (!found) { fprintf(stderr, "Unknown implementation: %s\n", selected); return 1; }
     if (validate_only && csv) {
         fprintf(stderr, "--validate-only does not produce benchmark CSV.\n");
@@ -189,7 +195,12 @@ int main(int argc, char **argv) {
     }
     lab_randomize(&p, (uint32_t)seed);
     if (!profiling || validate_only) lab_reference(&p);
-    fprintf(stderr, "mode=%s compiler=%s build=%s M=%zu N=%zu K=%zu seed=%zu "
+    /* Keep the human-readable header and rows on one stream: terminals may
+     * merge stdout/stderr in chunks, even halfway through a printed line.
+     * CSV keeps metadata on stderr so stdout remains machine-readable.
+     */
+    FILE *metadata = csv ? stderr : stdout;
+    fprintf(metadata, "mode=%s compiler=%s build=%s M=%zu N=%zu K=%zu seed=%zu "
                     "repeats=%zu warmup=%zu batch=%zu\n",
             validate_only ? "validate" : profiling ? "profile" : "benchmark", LAB_COMPILER, LAB_BUILD,
             m, n, k, seed, repeats, warmup, batch);
@@ -208,7 +219,7 @@ int main(int argc, char **argv) {
         } else {
             passed = profiling ? profile(&impls[i], &p, repeats, warmup, batch) :
                                   measure(&impls[i], &p, repeats, warmup, batch,
-                                          (uint32_t)seed, csv);
+                                          (uint32_t)seed, csv, name_width);
         }
         if (!passed)
             ok = false;
