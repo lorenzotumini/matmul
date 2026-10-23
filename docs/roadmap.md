@@ -1,40 +1,24 @@
-# Experiment roadmap
+# Computing topics through matrix multiplication
 
-At each stage: predict, implement one change, test, measure, explain. Keep earlier
-kernels as baselines. Only stage 1 is implemented; choose one next experiment
-rather than preparing infrastructure for the whole roadmap.
+Matrix multiplication connects several layers of computing. This map groups
+the concepts; it does not prescribe an implementation sequence.
 
-| Stage | Build or investigate | What it teaches | Evidence to collect |
-| --- | --- | --- | --- |
-| 1 | Direct definition in C | Shapes, indexing, pointers, ownership, debugging, tests | Paper example, all shared tests pass, first Release timings |
-| 2 | Compiler experiments on the same source | Preprocessing/compilation/linking, optimization, alias analysis, assembly | Debug vs Release; GCC vs Clang; vectorization reports |
-| 3 | Loop interchange | Row-major layout, strides, cache lines, dependence and loop order | Square and rectangular timings; identify contiguous accesses |
-| 4 | Transpose B before dot products | Trading preparation and memory for locality | Include transpose cost; separately study repeated reuse |
-| 5 | Cache blocking, then packing | Working sets, cache hierarchy, tiles, tail handling | Sweep tile sizes and awkward dimensions |
-| 6 | SIMD, auto first and intrinsics second | Vector lanes, FMA, registers, alignment, remainder loops | Assembly/reports, numerical differences, vector-width boundary tests |
-| 7 | CPU threads (OpenMP first) | Work decomposition, races, scheduling, false sharing and overhead | Fixed thread counts from 1 upward, scaling across matrix sizes |
-| 8 | A tuned BLAS comparison | APIs/ABIs, mature microkernels, separating algorithm and implementation | Compare against SGEMM with controlled BLAS thread count |
-| 9 | First CUDA kernel, one output per thread | Grid/block indexing, device memory, transfer, launch and synchronization | Shared correctness checks, end-to-end timing, memory footprint |
-| 10 | Tiled CUDA kernel | Coalesced loads, shared memory, barriers, occupancy and reuse | Nonmultiple tile sizes, CUDA-event timing, profiling |
-| 11 | cuBLAS comparison | Library integration, row/column-major conventions, device reuse | Compare both kernel-only and transfer-inclusive cost |
-| 12 | Alternative algorithms and precision | Strassen, crossover sizes, temporary storage, stability | Total time/memory and a justified accuracy policy |
+| Topic | Main ideas |
+| --- | --- |
+| [Definition and representation](01-definition.md) | Shapes, indexing, pointers, ownership, correctness and arithmetic cost |
+| [Loop order](02-loop-interchange.md) | Strides, locality, cache lines, reuse and dependencies |
+| [Compilers](03-compiler.md) | Translation, optimization, alias analysis, vectorization and assembly |
+| Transposition | Preparation cost, extra storage and contiguous dot products |
+| Cache blocking and packing | Working sets, cache hierarchy, data layout and boundary handling |
+| SIMD | Lanes, registers, alignment, fused operations and remainder handling |
+| CPU parallelism | Work decomposition, races, scheduling, false sharing and scaling |
+| BLAS | Library interfaces, mature implementations and comparison baselines |
+| GPU computing | Thread grids, device memory, transfers, synchronization and launch overhead |
+| GPU tiling | Coalescing, shared memory, barriers, occupancy and reuse |
+| GPU libraries | Layout conventions, device-data reuse and timing boundaries |
+| Algorithms and precision | Arithmetic complexity, crossover sizes, temporary memory and numerical stability |
+| Language comparisons | Representation, compiler behavior, interoperability and backend costs |
 
-Learn SIMD and threads separately before combining them. Loop interchange and
-tiling change memory access and reuse while keeping the usual cubic arithmetic
-count.
-
-Optional language comparisons can come after the C baseline: keep the same
-algorithm, precision, fixtures, and timing contract. A library-backed operation
-also compares its backend; crossing languages adds FFI costs.
-
-## Local GPU reminder
-
-The initial inspection on 2026-10-22 found an NVIDIA GeForce MX330 with compute
-capability 6.1 and 2 GiB VRAM, and CUDA Toolkit 12.4. Before the CUDA lesson,
-recheck architecture support and the required Windows host compiler using
-[NVIDIA's architecture guidance](https://developer.nvidia.com/blog/navigating-gpu-architecture-support-a-guide-for-nvidia-cuda-developers)
-and the [CUDA 12.4 Windows guide](https://docs.nvidia.com/cuda/archive/12.4.0/cuda-installation-guide-microsoft-windows/).
-Keep initial workloads within available VRAM.
-
-Use [the conventions](conventions.md) to add each implementation to the shared
-tests and benchmark.
+Performance depends on the interaction between algorithm, memory access,
+compiler and hardware. Meaningful comparisons require the same mathematical
+problem, compatible accuracy requirements and clearly defined timing boundaries.

@@ -4,10 +4,17 @@ and measuring it against earlier versions.
 ## Workflow
 
 1. Read [the kernel contract](include/matmul.h).
-2. Read the [lessons](docs/01-definition.md).
+2. Use the concept summaries below as a reference.
 3. Run the commands below to check correctness and take a measurement.
-4. Choose the next experiment from [the roadmap](docs/roadmap.md). Follow
-   [the conventions](docs/conventions.md) when adding an implementation.
+4. Follow [the conventions](docs/conventions.md) when adding an implementation.
+
+## Concept summaries
+
+| Summary | Focus |
+| --- | --- |
+| [01 — Matrix multiplication basics](docs/01-definition.md) | Shapes, indexing, correctness and arithmetic cost |
+| [02 — Loop order and memory access](docs/02-loop-interchange.md) | Locality, reuse, initialization and performance interpretation |
+| [03 — Compilers and generated code](docs/03-compiler.md) | Optimization, dependencies, SIMD and evidence |
 
 ## Build, test, measure
 

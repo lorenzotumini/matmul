@@ -18,3 +18,10 @@ matrix multiplication kernels manually to understand the basics.
   default to GCC. Avoid putting builds or the double oracle inside captures.
 - Nob hides successful setup output in stage logs by default. Preserve clean
   result stdout; show diagnostics on failure and support `--verbose` for detail.
+
+# Documentation
+
+- Numbered concept documents are concise summaries of the main takeaways.
+  Keep them independent of repository progress and specific implementations.
+- Do not put exercises, next-implementation instructions, or completion status
+  in those summaries. Keep project commands in the operational references.
