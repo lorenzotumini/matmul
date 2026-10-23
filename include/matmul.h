@@ -29,6 +29,9 @@ void matmul_simd_sse(size_t m, size_t n, size_t k,
 /* Optional: discover availability through matmul_implementations(). */
 void matmul_simd_avx(size_t m, size_t n, size_t k,
                      const float *a, const float *b, float *c);
+/* Optional: built when an OpenMP C compiler/runtime is available. */
+void matmul_openmp(size_t m, size_t n, size_t k,
+                   const float *a, const float *b, float *c);
 
 typedef struct {
     const char *name;

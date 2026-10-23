@@ -41,6 +41,20 @@ if(MATMUL_ENABLE_AVX AND MATMUL_TARGET_X86_64)
     endif()
 endif()
 
+# Keep OpenMP compile options on its own backend; only the runtime link
+# dependency propagates to executables using the static libraries.
+option(MATMUL_ENABLE_OPENMP "Build the optional OpenMP exercise" ON)
+if(MATMUL_ENABLE_OPENMP)
+    find_package(OpenMP QUIET COMPONENTS C)
+    if(OpenMP_C_FOUND)
+        add_library(matmul_openmp STATIC src/openmp.c)
+        target_include_directories(matmul_openmp PRIVATE include)
+        target_link_libraries(matmul_openmp PRIVATE OpenMP::OpenMP_C)
+        target_link_libraries(matmul PRIVATE matmul_openmp)
+        target_compile_definitions(matmul PRIVATE MATMUL_HAVE_OPENMP=1)
+    endif()
+endif()
+
 # Support code is separate from the kernels you will study.
 add_library(lab_support STATIC tools/lab.c)
 target_include_directories(lab_support PUBLIC tools)
@@ -76,6 +90,9 @@ if(BUILD_TESTING)
 endif()
 
 set(lab_targets matmul lab_support matmul_bench)
+if(TARGET matmul_openmp)
+    list(APPEND lab_targets matmul_openmp)
+endif()
 if(BUILD_TESTING)
     list(APPEND lab_targets matmul_tests)
 endif()

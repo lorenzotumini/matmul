@@ -31,6 +31,9 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
 #if defined(__x86_64__) || defined(_M_X64)
         {"simd_sse", matmul_simd_sse, "Four-float SSE intrinsics"},
 #endif
+#ifdef MATMUL_HAVE_OPENMP
+        {"openmp", matmul_openmp, "Row ownership (serial scaffold; add OpenMP directive)"},
+#endif
 #ifdef MATMUL_HAVE_AVX
         /* Keep this optional entry last: unsupported hosts omit it by count. */
         {"simd_avx", matmul_simd_avx, "Eight-float AVX intrinsics (exercise)"},

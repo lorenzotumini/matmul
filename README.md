@@ -44,6 +44,27 @@ Arguments before `--` configure Nob; arguments after it configure the test or
 benchmark runner. Use `./nob --help` for build options and
 `./nob bench -- --help` for workload options.
 
+## OpenMP thread settings
+
+The OpenMP backend is built when CMake finds a compatible C compiler and
+runtime. `nob bench -- --list` lists the available implementations. OpenMP
+compile options apply only to that backend; the other kernels retain their
+existing options.
+
+In PowerShell, configure thread settings before testing and measuring:
+
+```powershell
+$env:OMP_NUM_THREADS = "4"
+$env:OMP_DYNAMIC = "FALSE"
+.\nob.exe test
+.\nob.exe bench -- --impl openmp --m 512 --n 512 --k 512
+```
+
+These settings persist in that shell; change `OMP_NUM_THREADS` to compare
+1, 2 and 4 threads. Record both settings with the command and timings: they
+are not included in the benchmark CSV. Correct output alone does not prove
+that a loop ran in parallel; CPU profiles can show worker activity.
+
 ## Save measurements
 
 ```sh
