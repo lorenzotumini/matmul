@@ -1,113 +1,85 @@
-# Profiling through Nob
+# Profiling
 
-Use three everyday commands:
+Use profiling to locate CPU hotspots. Use `nob bench` for speed comparisons;
+profiler overhead and build settings can change timings.
+
+## Requirements
+
+[Samply](https://github.com/mstange/samply) must be on PATH.
+On Windows, `nob profile` defaults to clang-cl for PDB symbols and requires a
+working Visual Studio C toolchain and Windows SDK. If discovery fails, use an
+x64 Visual Studio Developer terminal. MSVC is also supported through `--cc msvc`;
+MinGW GCC is rejected for captures because kernel symbols did not resolve in
+local testing. On other platforms the default compiler is GCC.
+
+Windows ETW recording may require an elevated terminal. Capture failures show
+Samply's diagnostics and return a failing status.
+
+## Capture and inspect
+
+From the repository root:
 
 ```powershell
-.\nob.exe test
-.\nob.exe bench -- --impl all --m 256 --n 256 --k 256
 .\nob.exe profile -- --impl naive
 ```
 
-`test` checks correctness. `bench` measures speed. `profile` records CPU samples
-that explain where execution spends time. Every command builds first.
+Nob performs the following steps:
 
-## Capture a profile
+1. Builds optimized code with symbols (`RelWithDebInfo`).
+2. Runs the shared tests on that build.
+3. Validates the requested implementation, dimensions, and seed against the
+   double reference, outside the capture.
+4. Records the repeated kernel workload with Samply.
 
-`nob profile` now performs the complete capture workflow:
-
-1. Builds optimized code with debug symbols (`RelWithDebInfo`).
-2. Runs the shared tests on that exact build.
-3. Validates the selected implementation against the double reference at the
-   requested dimensions and seed, once, before recording.
-4. Runs Samply on the repeated multiplication process.
-5. Saves the profile, resolved-symbol sidecar, and exact capture command.
-
-Compilation, tests and the reference calculation are outside the capture.
-The captured process still includes allocation, input generation, warmup and
-cleanup. Select the kernel (for example `matmul_naive`) when examining samples.
-
-Defaults are the `naive` implementation, 256-by-256 matrices, 200 measured calls,
-and the `profile` build mode. Increase repeats for faster implementations so
-the workload runs for a few seconds:
+The defaults are `naive`, 256-by-256 matrices, two warmup calls, and 200 workload
+calls. Increase `--repeats` for faster kernels so the workload runs for a few
+seconds. To capture and open the viewer:
 
 ```powershell
-.\nob.exe profile -- --impl naive --m 256 --n 256 --k 256 --repeats 500
+.\nob.exe profile --open -- --impl naive --repeats 500
 ```
 
-The command saves a unique `results/profile-<timestamp>-<id>.json.gz` file by
-default. It prints the path when finished. To choose a name:
+The viewer server runs until Ctrl+C. Without `--open`, capture saves and exits.
+To choose a filename, put `--output` before `--`:
 
 ```powershell
 .\nob.exe profile --output results\naive-baseline.json.gz -- --impl naive
 ```
 
-Existing capture files or sidecars are protected from overwrite. For custom
-output directories other than `results/`, create the parent directory first.
-
-The normal console shows short build/check statuses and the saved profile path.
-Successful setup output is stored in `build/<compiler>/profile/logs/`; a
-save-only capture's raw output is stored in `.stdout.log` and `.stderr.log`
-files beside the profile. Failures display their logs automatically. Add
-`--verbose` before `--` to see the commands and all logged output. With
-`--open`, Samply's viewer output stays live so its server instructions are visible.
-
-## Open the interactive viewer
-
-Add `--open` to capture and then open Samply's interactive call tree, flame
-graph, timeline and source view:
-
-```powershell
-.\nob.exe profile --open -- --impl naive
-```
-
-Samply keeps its local viewer server running until stopped with Ctrl+C. The
-capture is saved on disk. Without `--open`, recording finishes and exits,
-which is convenient for automated experiments.
-
-To reopen a saved capture later, use the path printed by Nob:
+To reopen that capture:
 
 ```powershell
 samply load results\naive-baseline.json.gz
 ```
 
-## Requirements and symbols
+The capture includes allocation, input generation, warmup, and cleanup. Focus on
+the selected kernel, such as `matmul_naive`. During the repeated calls, the runner
+has no oracle, per-call timers, or validation; a final finite-output check and
+checksum keep the result observable. They do not establish correctness.
+`--profile` and `--validate-only` in the benchmark executable are internal parts
+of this workflow; use `nob profile` to run it.
 
-[Samply](https://github.com/mstange/samply) must be on PATH. On this Windows
-machine, an actual capture was verified with Samply 0.13.1 and clang-cl/PDB
-symbols. Captures resolved `matmul_naive` and its source file.
+## Saved files
 
-On Windows, `nob profile` defaults to **clang-cl**; other actions default to
-GCC. A working Visual Studio C toolchain and Windows SDK are needed. If compiler
-discovery fails, run from an x64 Visual Studio Developer terminal. `--cc msvc`
-is also accepted for Windows captures. MinGW GCC captures were tested but did
-not resolve kernel symbols, so the profile command rejects that combination.
-On other platforms the default remains GCC.
+The default path is `results/profile-<timestamp>-<id>.json.gz`. Nob prints the
+path when finished and protects existing captures and sidecars from overwrite.
+Create the parent directory first for custom paths outside `results/`.
 
-Windows ETW recording may require an elevated terminal. If capture fails, Nob
-returns failure and preserves the profiler's error message; it does not treat
-an ordinary workload run as a successful capture.
+Keep each useful capture with its companion files:
 
-The resolved-symbol sidecar uses Samply's `--unstable-presymbolicate` option.
-Keep it beside the profile, along with the `.command.txt` note. Preserve the
-matching executable/PDB and source revision for long-term source-level analysis;
-resolved symbols do not snapshot source files. Both the compressed profile and
-symbol JSON can be inspected programmatically.
+| File | Purpose |
+| --- | --- |
+| `*.json.gz` | Recorded profile |
+| `*.json.syms.json` | Resolved symbols, produced through Samply's `--unstable-presymbolicate` option |
+| `*.json.gz.command.txt` | Working directory and exact capture command |
+| `*.json.gz.stdout.log`, `*.json.gz.stderr.log` | Profiler/workload output for captures without `--open` |
 
-## What profiling tells us
+Setup logs live in `build/<compiler>/profile/logs/`. Failures display their logs;
+use `--verbose` before `--` for full commands and output.
+Preserve the matching executable/PDB and source revision for long-term source
+analysis: resolved symbols do not snapshot source files. Remove disposable
+captures together with their companions when they are no longer useful.
 
-Start with a question: is time in the kernel, allocation, a helper, or a wait?
-CPU samples locate hotspots. They do not by themselves measure cache misses,
-memory bandwidth, or prove that the kernel is compute-bound.
-
-Use ordinary `nob bench` results for speed comparisons; profiler overhead changes
-execution time. Profile builds may use different optimization flags from Release.
-Always compare implementations using the same compiler and configuration.
-
-Intel VTune remains the next tool for cache, bandwidth and execution-stall
-questions when its hardware-counter support has been checked. No custom
-dashboard, simulator or GPU profiling integration is needed at this stage.
-
-The underlying `matmul_bench --profile` and `--validate-only` flags are internal
-parts of this workflow. You do not need to invoke the executable directly or
-wrap Nob in Samply. Build-only compiler experiments can still use
-`nob build --mode profile`; only the **profile command** records samples.
+CPU samples show where time is spent. They do not directly measure cache misses,
+memory bandwidth, or execution stalls; investigate hardware counters when a
+specific experiment needs them.

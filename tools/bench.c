@@ -8,7 +8,7 @@
 #include <string.h>
 
 static void usage(void) {
-    puts("Usage: matmul_bench [options]\n"
+    puts("Usage: nob bench -- [options]\n"
          "  --list                 List compiled implementations\n"
          "  --impl NAME            Implementation name or all (default: all)\n"
          "  --m M --n N --k K      A[M,K] * B[K,N] (default: 256 each)\n"
@@ -17,10 +17,11 @@ static void usage(void) {
          "  --batch B              Calls per measured sample (default: 1)\n"
          "  --seed S               uint32 input seed (default: 42)\n"
          "  --csv                  Write CSV to stdout; metadata to stderr\n"
-         "  --profile              Repeat one --impl without the oracle/checks;\n"
-         "                         run correctness tests separately first\n"
-         "  --validate-only        Check the requested inputs once, without timing\n"
-         "  --help                 Show this help");
+         "  --help                 Show this help\n"
+         "\nFor CPU captures, use nob profile -- --impl NAME.\n"
+         "Internal options used by nob profile:\n"
+         "  --profile              Repeat one implementation without oracle/checks\n"
+         "  --validate-only        Validate requested inputs once without timing");
 }
 
 static bool number(const char *s, size_t *value) {
@@ -43,7 +44,7 @@ static int compare_double(const void *a, const void *b) {
 
 static bool profile(const MatmulImplementation *impl, LabProblem *p,
                     size_t repeats, size_t warmup, size_t batch) {
-    fprintf(stderr, "Profiling workload: no reference validation. Run tests first.\n");
+    fprintf(stderr, "Profile workload: no oracle or per-call validation.\n");
     lab_poison(p);
     for (size_t i = 0; i < warmup; ++i)
         impl->run(p->m, p->n, p->k, p->a, p->b, p->c);

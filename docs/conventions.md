@@ -6,10 +6,9 @@ The starting problem is dense, contiguous, row-major, single-precision
 `C = A * B`. M is the number of A/C rows, N is the number of B/C columns,
 and K is the shared dimension. Document dimensions in that order.
 
-All registered functions obey `include/matmul.h`. They overwrite C, leave A
-and B unchanged, handle rectangular and empty shapes, and do not require SIMD
-alignment or dimensions divisible by a vector/tile width. Inputs and output
-do not overlap. Arguments are prevalidated by the caller, outside hot loops.
+All registered functions obey [the kernel contract](../include/matmul.h).
+That header defines buffer ownership, layout, alignment, and empty shapes.
+Arguments are prevalidated by the caller, outside hot loops.
 
 The initial tests use finite, moderate inputs; this is not a specification for
 NaN/infinity inputs or overflowing arithmetic. Exceptional inputs and mixed
@@ -21,13 +20,13 @@ For a new CPU implementation:
 2. Add the source to the `matmul` CMake target.
 3. Add one entry to `src/registry.c`.
 4. Run `nob test` and `nob test --mode release`; both exercise every entry.
-5. Compare against the preserved naive baseline using the same command.
+5. Run `nob bench -- --impl all` with the dimensions you want to compare.
+   Keep compiler, configuration, inputs, and sampling options the same.
 
-Keep a fallback or an explicit availability check for optional instruction
-sets and GPU backends when introduced. A portable build should continue to
-work without them. Do not globally enable AVX or CUDA in anticipation of a
-later lesson. Add runtime CPU feature checks before distributing an intrinsics
-binary that requires a particular instruction set.
+Add optional instruction sets and backends when their lesson needs them, with
+a fallback or explicit availability check. Keep the portable build working;
+avoid global AVX/CUDA flags. Check runtime CPU features before distributing
+an intrinsics binary that needs a particular instruction set.
 
 Avoid fast-math initially. Compiler auto-vectorization is allowed: `naive`
 means source code that follows the definition, not a promise of scalar machine
@@ -75,19 +74,8 @@ timer overhead can otherwise dominate. Both operands are reused: these are
 warm-buffer experiments, with no cache flushing. Validation between samples
 also touches the output/reference. Do not label these cold-memory timings.
 
-`--profile` is a separate diagnostic workload. It requires one named
-implementation, allocates only A/B/C, and skips the reference calculation and
-correctness validation. After warmup it runs `repeats * batch` calls without
-per-call timers or checks. A final finite-output scan and checksum do not
-establish correctness; run the shared tests first. Whole-process captures
-still include allocation, data generation, warmup, and cleanup; focus analysis
-on the selected kernel. See [profiling.md](profiling.md).
-
-For everyday use, `nob profile` handles the low-level flags: it builds with
-symbols, tests the exact build, and validates the requested inputs with the
-reference outside the trace, then starts Samply. The captured workload has
-no oracle or validation between calls. Captures include resolved-symbol JSON
-and an exact command note so both people and tools can inspect them.
+Profiles locate hotspots and have different measurement conditions from the
+benchmark. Use [the profiling guide](profiling.md) for that workflow.
 
 Minimum, median and maximum show some timing variation. GFLOP/s uses the
 median. The checksum makes output observable, but correctness comes from the
@@ -100,11 +88,7 @@ thread count and GPU/backend parameters. The CSV alone is not a complete
 reproduction record. Do not commit transient build directories or timings as
 universal performance claims.
 
-For CUDA, the first wrapper should preserve the host-array contract and wait
-for completion, so host timing includes transfers and synchronization. Add a
-separate prepared-device experiment when learning CUDA events and buffer
-reuse. Report kernel-only and end-to-end time separately; a host timer around
-an asynchronous launch measures submission, not completed multiplication.
-
-For packed CPU kernels, the same distinction applies: report one-shot cost
-and reuse cost separately when a prepared representation becomes useful.
+When adding packed CPU or GPU kernels, distinguish one-shot cost from reuse
+of prepared data. A GPU wrapper must preserve the host-array contract and
+wait for completion, including transfers and synchronization in host timings.
+Report kernel-only/device timings separately.

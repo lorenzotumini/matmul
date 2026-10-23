@@ -103,7 +103,7 @@ static bool kernel_case(const MatmulImplementation *impl,
 }
 
 static bool kernel(const MatmulImplementation *impl) {
-    /* Fail early with an understandable fixture while Exercise 01 is TODO. */
+    /* Start with a small fixture to make basic indexing failures easy to trace. */
     REQUIRE(kernel_case(impl, 2, 2, 3, ONES, 1));
     const size_t shapes[][3] = {
         /* M, N, K: singleton, rectangular, vector/tile tails, empty axes */

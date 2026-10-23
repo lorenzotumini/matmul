@@ -191,7 +191,6 @@ int main(int argc, char **argv) {
         }
     }
     if (!action) action = "build";
-    if (strcmp(action, "benchmark") == 0) action = "bench";
     bool building = strcmp(action, "build") == 0;
     bool testing = strcmp(action, "test") == 0;
     bool benchmarking = strcmp(action, "bench") == 0;

@@ -1,7 +1,8 @@
 # 01 — From the definition to C
 
-The first goal is to write and understand a correct matrix multiplication.
-Use a Debug build while working. Timing comes after correctness.
+The first goal is to understand a correct matrix multiplication. This lesson's
+implementation is complete in `src/naive.c` and is preserved as the baseline.
+Use `nob test` while working. Timing comes after correctness.
 
 ## What are we computing?
 
@@ -50,13 +51,13 @@ index(row, column) = row * columns + column
 Apply this separately to A, B and C: they have different column counts.
 These are ordinary flat arrays, not `float **` arrays of row pointers.
 
-## Your task
+## Understand the baseline
 
-Open `src/naive.c`. Keep the function signature and replace the placeholder
-body. Write the direct definition with three loops. Use a `float` accumulator,
-and assign every output entry on every call.
+Before opening `src/naive.c`, sketch the direct definition as three loops on
+paper. Use a `float` accumulator and assign every output entry on every call.
+Then compare your sketch with the implementation.
 
-Before writing it, answer:
+Answer:
 
 1. Which two indices identify an output entry?
 2. Which index walks along the shared dimension?
@@ -64,8 +65,8 @@ Before writing it, answer:
 4. What is the flat-array index for each of A, B and C?
 5. If K is zero, what value should the empty sum produce?
 
-Do not add allocation, threading or intrinsics yet. The caller already owns
-the buffers. Your function should not print anything.
+The kernel needs no allocation, threading, intrinsics, or printing. The caller
+already owns the buffers; [the header](../include/matmul.h) defines the contract.
 
 Run:
 
@@ -81,8 +82,12 @@ seed and call number. For detailed kernel-test output, use
 If you get stuck, inspect one output with a debugger. Write down its expected
 three products and compare each array access with your paper calculation.
 
-Once the tests pass, change the description in `src/registry.c` to remove
-`Exercise 01` / `TODO`, build Release, run its tests, then take a first timing.
+Once you understand the loops, check the optimized build and take a first timing:
+
+```powershell
+.\nob.exe test --mode release
+.\nob.exe bench -- --impl naive --m 256 --n 256 --k 256
+```
 
 ## Investigate your baseline
 
@@ -103,5 +108,6 @@ other counting conventions omit the first addition. We use the conventional
 count consistently for comparisons.
 
 Write a short note with your prediction, command, compiler/build, observation
-and interpretation. Preserve this baseline in its own file when you start the
-next implementation.
+and interpretation. Keep `src/naive.c` as the baseline when you start the next
+implementation in a separate file. Follow [the conventions](conventions.md)
+to register it for the same tests and benchmark.
