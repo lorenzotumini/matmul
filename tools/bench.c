@@ -136,7 +136,8 @@ int main(int argc, char **argv) {
         if (strcmp(arg, "--help") == 0) { usage(); return 0; }
         if (strcmp(arg, "--list") == 0) {
             for (size_t j = 0; j < count; ++j)
-                printf("%s: %s\n", impls[j].name, impls[j].description);
+                printf("%s: %s%s\n", impls[j].name, impls[j].description,
+                       matmul_implementation_available(&impls[j]) ? "" : " [unavailable on this CPU/OS]");
             return 0;
         }
         if (strcmp(arg, "--csv") == 0) { csv = true; continue; }
@@ -169,7 +170,13 @@ int main(int argc, char **argv) {
     bool found = strcmp(selected, "all") == 0;
     int name_width = 12;
     for (size_t i = 0; i < count; ++i) {
-        if (strcmp(selected, impls[i].name) == 0) found = true;
+        if (strcmp(selected, impls[i].name) == 0) {
+            found = true;
+            if (!matmul_implementation_available(&impls[i])) {
+                fprintf(stderr, "%s is unavailable on this CPU/OS.\n", selected);
+                return 1;
+            }
+        }
         if (strcmp(selected, "all") == 0 || strcmp(selected, impls[i].name) == 0) {
             int length = (int)strlen(impls[i].name);
             if (length > name_width) name_width = length;
@@ -204,12 +211,23 @@ int main(int argc, char **argv) {
                     "repeats=%zu warmup=%zu batch=%zu\n",
             validate_only ? "validate" : profiling ? "profile" : "benchmark", LAB_COMPILER, LAB_BUILD,
             m, n, k, seed, repeats, warmup, batch);
+#ifdef MATMUL_HAVE_OPENBLAS
+    if (strcmp(selected, "openblas") == 0 || strcmp(selected, "all") == 0) {
+        fprintf(metadata, "openblas config=\"%s\" core=%s configured_threads=%d threading=%s\n",
+                matmul_openblas_config(), matmul_openblas_core(),
+                matmul_openblas_threads(), matmul_openblas_threading());
+    }
+#endif
     if (csv) puts("implementation,compiler,build,m,n,k,seed,repeats,warmup,batch,"
                   "min_ms,median_ms,max_ms,gflops,checksum");
     bool ok = true;
     for (size_t i = 0; i < count; ++i) {
         if (strcmp(selected, "all") != 0 && strcmp(selected, impls[i].name) != 0)
             continue;
+        if (!matmul_implementation_available(&impls[i])) {
+            fprintf(stderr, "Skipping %s: unavailable on this CPU/OS.\n", impls[i].name);
+            continue;
+        }
         bool passed;
         if (validate_only) {
             lab_poison(&p);

@@ -10,12 +10,20 @@ and measuring it against earlier versions.
 
 ## Concept summaries
 
-- [Matrix multiplication basics](docs/01-definition.md): Shapes, indexing, correctness and arithmetic cost  
-- [Loop order and memory access](docs/02-loop-interchange.md): Locality, reuse, initialization and performance interpretation  
-- [Compilers and generated code](docs/03-compiler.md): Optimization, dependencies, SIMD and evidence  
-- [Cache blocking and implementation selection](docs/04-blocking.md): Working sets, tiling overhead, sustained throughput and adaptive selection  
-- [Explicit SIMD and vector width](docs/05-simd.md): Intrinsics, SSE versus AVX, remainder handling and performance tradeoffs  
-- [Combining CPU optimizations](docs/06-cpu-optimization.md): Register tiles, cache reuse, thread ownership and further techniques
+1. [Matrix multiplication basics](docs/01-definition.md): shapes, indexing and correctness.
+2. [Loop order and memory access](docs/02-loop-interchange.md): locality and reused values.
+3. [Compilers and generated code](docs/03-compiler.md): optimization and assembly.
+4. [Cache blocking](docs/04-blocking.md): working sets and cache reuse.
+5. [Packing matrix panels](docs/05-packing.md): temporary layouts and copy costs.
+6. [SIMD and FMA](docs/06-simd.md): vector widths, fused arithmetic and rounding.
+7. [Register tiling](docs/07-register-tiling.md): keeping partial sums in registers.
+8. [CPU parallelism](docs/08-parallelism.md): ownership, scheduling and scaling.
+9. [Combining CPU optimizations](docs/09-cpu-optimization.md): layered reuse and practical tradeoffs.
+10. [Comparing with BLAS](docs/10-blas.md): library interfaces and fair measurements.
+
+The benchmark follows this learning order, with the combined implementation and
+BLAS last. This is an order of complexity; matrix shape and hardware still
+influence which implementation is faster.
 
 ## Build, test, measure
 
@@ -68,10 +76,25 @@ that a loop ran in parallel; CPU profiles can show worker activity.
 
 ## Combined CPU reference
 
-`cpu_combined` combines AVX, 4-by-16 register tiles, cache blocking, and OpenMP
-when available. Small workloads avoid thread-team setup. Tile sizes and
-dispatch thresholds are readable starting heuristics in `src/cpu_combined.c`,
-not a claim of optimal performance for every shape or CPU.
+`cpu_combined` is one adaptive implementation. Start reading at
+[`src/cpu_combined.c`](src/cpu_combined.c), which selects between two private paths:
+
+| Path | When used | Techniques |
+| --- | --- | --- |
+| Direct (`cpu_combined_direct.c`) | Small or narrow problems; also CPUs without AVX-512 | 4-by-16 AVX/FMA register tiles; cache blocking and OpenMP for enough work |
+| Packed (`cpu_combined_packed.c`) | AVX-512 supported, M >= 128, N >= 32, M*N*K >= 8*1024*1024 | Packed A/B, 8-by-32 AVX-512/FMA register tiles, cache blocking and OpenMP |
+
+Small calls skip packing and thread-team setup. Large direct calls partition
+independent output tiles, which also allows column parallelism for short/wide
+matrices. The packed path shares one B panel across workers, each with private
+A panels and disjoint output rows. Workspace is bounded: 256 KiB for shared B
+plus 32 KiB per worker for A. Packing remains inside every measured call.
+
+CPU/OS support is checked and cached safely on first use. Without AVX/FMA,
+`cpu_combined` uses the portable blocked implementation. Without OpenMP, its
+optimized paths run serially. Build flags stay local to the specialized files;
+the dispatcher itself uses the baseline instruction set. Tile sizes and dispatch
+thresholds are heuristics, not a claim of optimal performance for every shape.
 
 ```powershell
 $env:OMP_NUM_THREADS = "4"
@@ -79,10 +102,72 @@ $env:OMP_DYNAMIC = "FALSE"
 .\nob.exe bench -- --impl cpu_combined --m 1024 --n 1024 --k 1024
 ```
 
-AVX availability is checked before the implementation is listed or called by
-the runners. Without an OpenMP runtime it uses a serial path; `--list` identifies
-that configuration. No heap allocation, input packing, FMA or fast-math is used.
-Earlier implementations remain available for comparison.
+The individual learning implementations remain separately benchmarkable. The
+former `cpu_combined_v2` entry is now part of `cpu_combined`; use that single name
+for tests, benchmarks and profiles.
+
+## CPU technique progression
+
+| Implementations, in benchmark order | Main idea |
+| --- | --- |
+| `naive` | Direct definition |
+| `loop_interchange` | Contiguous inner-loop accesses |
+| `blocked` | Cache tiles |
+| `packed` | B-panel packing on the blocked traversal |
+| `simd_sse`, `simd_avx`, `simd_avx512` | Four, eight and sixteen lanes; AVX versions include FMA |
+| `register_avx` | 4-by-16 register tiles using eight-lane FMA |
+| `openmp` | Independent output rows across threads |
+| `cpu_combined` | Adaptively combine the techniques |
+| `openblas` | External tuned library reference |
+
+All use `nob test` and `nob bench -- --impl NAME`. Portable C can also be
+vectorized by the compiler. Optional ISA flags apply only to specialized
+targets, and CPU/OS checks guard their use. Packing and SIMD do not guarantee
+improvements for every size; the sequence describes increasing complexity.
+
+## OpenBLAS comparison
+
+OpenBLAS is optional. For the Windows MSYS2 UCRT64/GCC toolchain, download its
+packages into the ignored build directory once:
+
+```powershell
+.\tools\setup_openblas.ps1
+.\nob.exe test
+```
+
+The script uses the existing MSYS2 package database and verifies downloads with
+pacman. It extracts packages under `build/deps/openblas/` without installing or
+upgrading the global toolchain. CMake discovers this local prefix for MinGW and
+copies the required DLLs beside the executables. Other installations can set
+the CMake cache variable `OPENBLAS_ROOT` (or the environment variable of that
+name) to a compatible OpenBLAS prefix. Builds without a compatible library
+continue to provide the learning kernels.
+
+Compare separate runs with matching thread limits:
+
+```powershell
+$env:OMP_NUM_THREADS = "4"
+$env:OMP_DYNAMIC = "FALSE"
+$env:OPENBLAS_NUM_THREADS = "4"
+$env:OPENBLAS_DEFAULT_NUM_THREADS = "4"
+.\nob.exe bench -- --impl cpu_combined --m 1024 --n 1024 --k 1024
+.\nob.exe bench -- --impl openblas --m 1024 --n 1024 --k 1024
+```
+
+Repeat with all thread limits set to 1, and include rectangular shapes. These
+are configured limits: a library can use fewer workers for small calls. The
+OpenBLAS metadata line reports its version/build settings, selected CPU core,
+configured thread count and threading backend. In CSV mode that line goes to
+stderr, preserving clean result stdout. Record it alongside the commands and
+environment settings.
+
+The adapter calls ordinary row-major SGEMM with `alpha=1`, `beta=0`, without
+prepacking inputs or adding an outer OpenMP region. Per-call packing and
+workspace costs stay inside the library call. Like other implementations,
+validation and warmup occur before measured samples; this measures warmed
+calls rather than first-call initialization latency. The adapter handles empty
+dimensions and zero K itself, and preserves the size_t interface using the
+portable baseline if dimensions exceed the library's integer ABI.
 
 ## Save measurements
 

@@ -7,15 +7,18 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(matmul STATIC src/registry.c
+            src/cpu_features.c
+            src/cpu_combined.c
+            src/packed.c
             src/naive.c
 		    src/loop_interchange.c
             src/blocked.c
             src/simd_sse.c)
 target_include_directories(matmul PUBLIC include)
 
-# AVX is optional and applies only to its own source file. Feature detection
+# AVX is optional and applies only to specialized backends. Feature detection
 # and all baseline kernels must remain executable without AVX.
-option(MATMUL_ENABLE_AVX "Build the optional eight-float AVX exercise" ON)
+option(MATMUL_ENABLE_AVX "Build optional AVX backends" ON)
 include(CheckCSourceCompiles)
 include(CheckCCompilerFlag)
 check_c_source_compiles("
@@ -32,12 +35,6 @@ if(MATMUL_ENABLE_AVX AND MATMUL_TARGET_X86_64)
     endif()
     if(DEFINED matmul_avx_flag)
         check_c_compiler_flag("${matmul_avx_flag}" MATMUL_COMPILER_HAS_AVX)
-        if(MATMUL_COMPILER_HAS_AVX)
-            target_sources(matmul PRIVATE src/simd_avx.c)
-            set_property(SOURCE src/simd_avx.c APPEND PROPERTY
-                COMPILE_OPTIONS "${matmul_avx_flag}")
-            target_compile_definitions(matmul PRIVATE MATMUL_HAVE_AVX=1)
-        endif()
     endif()
 endif()
 
@@ -55,17 +52,8 @@ if(MATMUL_ENABLE_OPENMP)
     endif()
 endif()
 
-# Combined backend: AVX throughout this target, OpenMP when available.
-if(MATMUL_ENABLE_AVX AND MATMUL_TARGET_X86_64 AND MATMUL_COMPILER_HAS_AVX)
-    add_library(matmul_cpu_combined STATIC src/cpu_combined.c)
-    target_include_directories(matmul_cpu_combined PRIVATE include)
-    target_compile_options(matmul_cpu_combined PRIVATE "${matmul_avx_flag}")
-    if(TARGET matmul_openmp)
-        target_link_libraries(matmul_cpu_combined PRIVATE OpenMP::OpenMP_C)
-    endif()
-    target_link_libraries(matmul PRIVATE matmul_cpu_combined)
-    target_compile_definitions(matmul PRIVATE MATMUL_HAVE_CPU_COMBINED=1)
-endif()
+include(cmake/CPUVariants.cmake)
+include(cmake/OpenBLASBackend.cmake)
 
 # Support code is separate from the kernels you will study.
 add_library(lab_support STATIC tools/lab.c)
@@ -84,6 +72,7 @@ target_compile_definitions(matmul_bench PRIVATE
 include(CTest)
 if(BUILD_TESTING)
     add_executable(matmul_tests tests/test_matmul.c)
+    target_include_directories(matmul_tests PRIVATE src)
     target_link_libraries(matmul_tests PRIVATE lab_support)
     add_test(NAME harness COMMAND matmul_tests --harness)
     add_test(NAME kernels COMMAND matmul_tests)
@@ -101,12 +90,25 @@ if(BUILD_TESTING)
         PROPERTIES WILL_FAIL TRUE)
 endif()
 
-set(lab_targets matmul lab_support matmul_bench)
+if(MATMUL_OPENBLAS_RUNTIME_FILES)
+    set(_openblas_executables matmul_bench)
+    if(BUILD_TESTING)
+        list(APPEND _openblas_executables matmul_tests)
+    endif()
+    foreach(_target IN LISTS _openblas_executables)
+        add_custom_command(TARGET ${_target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${MATMUL_OPENBLAS_RUNTIME_FILES} "$<TARGET_FILE_DIR:${_target}>"
+            VERBATIM)
+    endforeach()
+endif()
+
+set(lab_targets matmul lab_support matmul_bench ${MATMUL_CPU_VARIANT_TARGETS})
 if(TARGET matmul_openmp)
     list(APPEND lab_targets matmul_openmp)
 endif()
-if(TARGET matmul_cpu_combined)
-    list(APPEND lab_targets matmul_cpu_combined)
+if(TARGET matmul_openblas)
+    list(APPEND lab_targets matmul_openblas)
 endif()
 if(BUILD_TESTING)
     list(APPEND lab_targets matmul_tests)

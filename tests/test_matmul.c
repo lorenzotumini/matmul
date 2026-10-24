@@ -1,4 +1,5 @@
 #include "lab.h"
+#include "cpu_features.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -13,7 +14,23 @@
     } \
 } while (0)
 
+static bool unavailable(void) { return false; }
+
 static bool harness(void) {
+    const unsigned ecx = (1u << 26) | (1u << 27) | (1u << 28) | (1u << 12);
+    const unsigned ebx = (1u << 5) | (1u << 16) | (1u << 17) |
+                         (1u << 28) | (1u << 30) | (1u << 31);
+    REQUIRE(matmul_decode_cpu_features(ecx, ebx, 0) == 0);
+    REQUIRE(matmul_decode_cpu_features(ecx & ~(1u << 27), ebx, 0xe6) == 0);
+    REQUIRE(matmul_decode_cpu_features(ecx, ebx, 6) == (CPU_AVX | CPU_FMA | CPU_AVX2));
+    REQUIRE(matmul_decode_cpu_features(ecx, ebx, 0xe6) ==
+            (CPU_AVX | CPU_FMA | CPU_AVX2 | CPU_AVX512F | CPU_AVX512_MSVC));
+    REQUIRE(!(matmul_decode_cpu_features(ecx, ebx & ~(1u << 16), 0xe6) & CPU_AVX512F));
+    REQUIRE(!(matmul_decode_cpu_features(ecx & ~(1u << 12), ebx, 0xe6) & CPU_FMA));
+    MatmulImplementation probe = {"unavailable", NULL, "test availability", unavailable};
+    REQUIRE(!matmul_implementation_available(&probe));
+    probe.available = NULL;
+    REQUIRE(matmul_implementation_available(&probe));
     LabProblem p;
     REQUIRE(!lab_create(&p, SIZE_MAX, 2, 2));
     REQUIRE(!lab_create(&p, 1, SIZE_MAX / sizeof(double) + 1, 1));
@@ -110,7 +127,7 @@ static bool kernel(const MatmulImplementation *impl) {
         {1, 1, 1}, {2, 4, 3}, {1, 17, 9}, {13, 1, 7}, {7, 11, 1},
         {7, 9, 15}, {16, 16, 16}, {17, 31, 33}, {33, 17, 65},
         {65, 63, 129}, {5, 259, 263},
-        {0, 7, 3}, {4, 0, 3}, {4, 7, 0}, {0, 0, 0}
+        {0, 7, 3}, {4, 0, 3}, {4, 7, 0}, {4, 33, 0}, {0, 0, 0}
     };
     for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; ++i)
         for (uint32_t seed = 0; seed < 3; ++seed)
@@ -123,7 +140,15 @@ static bool kernel(const MatmulImplementation *impl) {
     REQUIRE(kernel_case(impl, 3, 5, 128, CANCEL, 42));
     /* Cross all combined-kernel tile boundaries and its parallel threshold. */
     REQUIRE(kernel_case(impl, 129, 257, 257, RANDOM, 42));
-    printf("PASS %s (52 fixtures, each called twice)\n", impl->name);
+    REQUIRE(kernel_case(impl, 129, 257, 257, CANCEL, 42));
+    /* Partial second SIMD half and nontrivial final reduction panel. */
+    REQUIRE(kernel_case(impl, 129, 287, 259, RANDOM, 17));
+    /* Adaptive dispatch: below/at the work threshold, too few rows, narrow N. */
+    REQUIRE(kernel_case(impl, 128, 256, 255, RANDOM, 42));
+    REQUIRE(kernel_case(impl, 128, 256, 256, RANDOM, 42));
+    REQUIRE(kernel_case(impl, 127, 257, 259, RANDOM, 42));
+    REQUIRE(kernel_case(impl, 257, 31, 1057, RANDOM, 42));
+    printf("PASS %s (61 fixtures, each called twice)\n", impl->name);
     return true;
 }
 
@@ -134,7 +159,12 @@ int main(int argc, char **argv) {
     size_t count;
     const MatmulImplementation *impls = matmul_implementations(&count);
     bool ok = true;
-    for (size_t i = 0; i < count; ++i)
+    for (size_t i = 0; i < count; ++i) {
+        if (!matmul_implementation_available(&impls[i])) {
+            printf("SKIP %s (unavailable on this CPU/OS)\n", impls[i].name);
+            continue;
+        }
         if (!kernel(&impls[i])) ok = false;
+    }
     return ok ? 0 : 1;
 }

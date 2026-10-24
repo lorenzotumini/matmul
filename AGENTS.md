@@ -25,3 +25,9 @@ matrix multiplication kernels manually to understand the basics.
   Keep them independent of repository progress and specific implementations.
 - Do not put exercises, next-implementation instructions, or completion status
   in those summaries. Keep project commands in the operational references.
+- Keep lesson numbering, README links and registry/benchmark order aligned:
+  definition, loop order, compilers, blocking, packing, SIMD/FMA, register
+  tiling, threads, the combined CPU implementation, then BLAS. This is learning
+  complexity, not a guarantee of monotonically improving performance.
+- FMA belongs within the SIMD lesson and the AVX/AVX-512 implementations;
+  do not add a separate FMA lesson or standalone FMA variant.

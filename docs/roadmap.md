@@ -1,25 +1,25 @@
 # Computing topics through matrix multiplication
 
-Matrix multiplication connects several layers of computing. This map groups
-the concepts; it does not prescribe an implementation sequence.
+The main topics follow increasing implementation complexity. This ordering
+organizes the concepts; it is not a ranking of performance for every workload.
 
-| Topic | Main ideas |
-| --- | --- |
-| [Definition and representation](01-definition.md) | Shapes, indexing, pointers, ownership, correctness and arithmetic cost |
-| [Loop order](02-loop-interchange.md) | Strides, locality, cache lines, reuse and dependencies |
-| [Compilers](03-compiler.md) | Translation, optimization, alias analysis, vectorization and assembly |
-| Transposition | Preparation cost, extra storage and contiguous dot products |
-| [Cache blocking](04-blocking.md) and packing | Working sets, cache hierarchy, data layout and boundary handling |
-| [SIMD](05-simd.md) | Lanes, registers, alignment, fused operations and remainder handling |
-| [Combined CPU optimization](06-cpu-optimization.md) | Register microkernels, layered reuse, thread ownership and practical tradeoffs |
-| CPU parallelism | Work decomposition, races, scheduling, false sharing and scaling |
-| BLAS | Library interfaces, mature implementations and comparison baselines |
-| GPU computing | Thread grids, device memory, transfers, synchronization and launch overhead |
-| GPU tiling | Coalescing, shared memory, barriers, occupancy and reuse |
-| GPU libraries | Layout conventions, device-data reuse and timing boundaries |
-| Algorithms and precision | Arithmetic complexity, crossover sizes, temporary memory and numerical stability |
-| Language comparisons | Representation, compiler behavior, interoperability and backend costs |
+| Order | Topic | Main ideas |
+| --- | --- | --- |
+| 01 | [Definition and representation](01-definition.md) | Shapes, indexing, ownership and correctness |
+| 02 | [Loop order](02-loop-interchange.md) | Strides, locality and dependencies |
+| 03 | [Compilers](03-compiler.md) | Translation, optimization and assembly |
+| 04 | [Cache blocking](04-blocking.md) | Working sets and cache hierarchy |
+| 05 | [Packing](05-packing.md) | Layout, temporary storage and amortized copy costs |
+| 06 | [SIMD and FMA](06-simd.md) | Lanes, vector widths, fused rounding and boundaries |
+| 07 | [Register tiling](07-register-tiling.md) | Microkernels, register reuse and spills |
+| 08 | [CPU parallelism](08-parallelism.md) | Ownership, scheduling, races and scaling |
+| 09 | [Combined CPU optimization](09-cpu-optimization.md) | Layered reuse and practical tradeoffs |
+| 10 | [BLAS](10-blas.md) | Library interfaces and mature performance references |
 
-Performance depends on the interaction between algorithm, memory access,
-compiler and hardware. Meaningful comparisons require the same mathematical
-problem, compatible accuracy requirements and clearly defined timing boundaries.
+Further topics include GPU execution and memory transfers, GPU shared-memory
+tiling, GPU library comparisons, alternative algorithms and precision, and
+language interoperability. Transposition is another way to explore locality.
+
+Performance depends on algorithm, memory access, compiler and hardware.
+Meaningful comparisons use the same mathematical problem, compatible accuracy
+requirements and clearly defined timing boundaries.

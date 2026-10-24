@@ -1,59 +1,43 @@
 #include "matmul.h"
+#include "cpu_features.h"
 
-#ifdef MATMUL_HAVE_AVX
-#include <stdbool.h>
-#ifdef _MSC_VER
-#include <intrin.h>
-#endif
-
-/* This file is compiled WITHOUT AVX. Check both CPU capability and OS support
- * for saving/restoring XMM and YMM registers before exposing the AVX kernel.
+/* Availability belongs to each entry, independent of its position in the list.
+ * This avoids accidentally exposing an ISA kernel when entries are reordered.
  */
-static bool avx_available(void) {
-#ifdef _MSC_VER
-    int features[4];
-    __cpuidex(features, 1, 0);
-    const unsigned int required = (1u << 26) | (1u << 27) | (1u << 28);
-    if (((unsigned int)features[2] & required) != required) return false;
-    return (_xgetbv(0) & 6) == 6;
-#else
-    __builtin_cpu_init();
-    return __builtin_cpu_supports("avx") != 0;
-#endif
+bool matmul_implementation_available(const MatmulImplementation *impl) {
+    return !impl->available || impl->available();
 }
-#endif
 
 const MatmulImplementation *matmul_implementations(size_t *count) {
     static const MatmulImplementation implementations[] = {
-        {"naive", matmul_naive, "Direct definition, row-major float loops"},
-        {"loop_interchange", matmul_loop_interchange, "Loop interchange to reduce cache misses"},
-        {"blocked", matmul_blocked, "Cache blocking with fixed-size tiles"},
+        {"naive", matmul_naive, "Direct definition, row-major float loops", NULL},
+        {"loop_interchange", matmul_loop_interchange, "Contiguous inner-loop accesses", NULL},
+        {"blocked", matmul_blocked, "Cache blocking with fixed-size tiles", NULL},
+        {"packed", matmul_packed, "Blocked traversal with copied B panels (single thread)", NULL},
 #if defined(__x86_64__) || defined(_M_X64)
-        {"simd_sse", matmul_simd_sse, "Four-float SSE intrinsics"},
+        {"simd_sse", matmul_simd_sse, "Four-float SSE intrinsics", NULL},
+#endif
+#ifdef MATMUL_HAVE_SIMD_AVX
+        {"simd_avx", matmul_simd_avx, "Eight-float AVX with FMA", matmul_has_fma},
+#endif
+#ifdef MATMUL_HAVE_AVX512
+        {"simd_avx512", matmul_simd_avx512, "Sixteen-float AVX-512 with FMA", matmul_has_avx512},
+#endif
+#ifdef MATMUL_HAVE_REGISTER_AVX
+        {"register_avx", matmul_register_avx, "4x16 AVX/FMA register tiles, no cache blocking or threads", matmul_has_fma},
 #endif
 #ifdef MATMUL_HAVE_OPENMP
-        {"openmp", matmul_openmp, "OpenMP static output-row scheduling"},
+        {"openmp", matmul_openmp, "OpenMP static output-row scheduling", NULL},
 #endif
-#ifdef MATMUL_HAVE_AVX
-        /* Keep AVX-dependent entries at the end for availability filtering. */
-        {"simd_avx", matmul_simd_avx, "Eight-float AVX intrinsics"},
-#ifdef MATMUL_HAVE_CPU_COMBINED
 #ifdef MATMUL_HAVE_OPENMP
-        {"cpu_combined", matmul_cpu_combined, "AVX register/cache tiles with OpenMP"},
+        {"cpu_combined", matmul_cpu_combined, "Adaptive direct/packed CPU tiles, SIMD/FMA and OpenMP when supported", NULL},
 #else
-        {"cpu_combined", matmul_cpu_combined, "AVX register/cache tiles (single-thread build)"},
+        {"cpu_combined", matmul_cpu_combined, "Adaptive direct/packed CPU tiles, SIMD/FMA when supported (single-thread build)", NULL},
 #endif
-#endif
+#ifdef MATMUL_HAVE_OPENBLAS
+        {"openblas", matmul_openblas, "OpenBLAS CBLAS SGEMM, row-major, alpha=1 beta=0", NULL},
 #endif
     };
     *count = sizeof implementations / sizeof implementations[0];
-#ifdef MATMUL_HAVE_AVX
-    if (!avx_available()) {
-        --*count;
-#ifdef MATMUL_HAVE_CPU_COMBINED
-        --*count;
-#endif
-    }
-#endif
     return implementations;
 }

@@ -1,5 +1,7 @@
 -std=c17
 -Iinclude
 -Itools
+-Isrc
+-Ibuild/deps/openblas/ucrt64/include/openblas
 -DLAB_COMPILER="editor"
 -DLAB_BUILD="editor"

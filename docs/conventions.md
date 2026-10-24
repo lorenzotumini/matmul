@@ -19,6 +19,8 @@ For a new CPU implementation:
 1. Add a separate source file and a declaration in `include/matmul.h`.
 2. Add the source to the `matmul` CMake target.
 3. Add one entry to `src/registry.c`.
+   Use a null availability callback for a portable backend or a CPU/OS check
+   for an optional instruction set. Registry order does not determine availability.
 4. Run `nob test` and `nob test --mode release`; both exercise every entry.
 5. Run `nob bench -- --impl all` with the dimensions you want to compare.
    Keep compiler, configuration, inputs, and sampling options the same.
@@ -27,6 +29,18 @@ Add optional instruction sets and backends when their lesson needs them, with
 a fallback or explicit availability check. Keep the portable build working;
 avoid global AVX/CUDA flags. Check runtime CPU features before distributing
 an intrinsics binary that needs a particular instruction set.
+
+The registry lists built implementations, including unavailable ISA variants.
+Call `matmul_implementation_available` before invoking a registry entry. Tests
+skip unavailable entries; the benchmark marks them in `--list` and rejects
+explicit requests to run them. Packing kernels may use bounded automatic
+workspace; copying and workspace preparation remain inside each measured call.
+
+External BLAS backends may allocate/cache internal workspace. Their ordinary
+synchronous calls use the same host-array contract and correctness checks.
+Per-call preparation, including packing, is timed; no prepacked input is
+provided for free. Initial validation/warmup also initializes a library before
+measurement, so the benchmark does not measure cold library startup.
 
 Avoid fast-math initially. Compiler auto-vectorization is allowed: `naive`
 means source code that follows the definition, not a promise of scalar machine
