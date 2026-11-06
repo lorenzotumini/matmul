@@ -106,3 +106,10 @@ When adding packed CPU or GPU kernels, distinguish one-shot cost from reuse
 of prepared data. A GPU wrapper must preserve the host-array contract and
 wait for completion, including transfers and synchronization in host timings.
 Report kernel-only/device timings separately.
+
+The first CUDA exercise uses a fresh device allocation per host call. Input
+copies, NaN output initialization, launch, synchronization, output copy and
+freeing are included. This intentionally simple baseline does not retain
+device buffers or publish a kernel-only measurement. Device errors terminate
+with diagnostics because the shared void-returning interface cannot carry an
+error code. Missing hardware is detected before invoking the backend.

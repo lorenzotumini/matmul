@@ -27,7 +27,18 @@ matrix multiplication kernels manually to understand the basics.
   in those summaries. Keep project commands in the operational references.
 - Keep lesson numbering, README links and registry/benchmark order aligned:
   definition, loop order, compilers, blocking, packing, SIMD/FMA, register
-  tiling, threads, the combined CPU implementation, then BLAS. This is learning
+  tiling, threads, the combined CPU implementation, BLAS, then GPU execution. This is learning
   complexity, not a guarantee of monotonically improving performance.
 - FMA belongs within the SIMD lesson and the AVX/AVX-512 implementations;
   do not add a separate FMA lesson or standalone FMA variant.
+
+# GPU exercises
+
+- `src/cuda_naive.cu` is an intentionally unfinished guided exercise. Do not
+  fill its TODOs merely to make tests pass. Supplied host plumbing belongs in
+  `src/cuda_support.cu`.
+- Use `nob test --cuda --filter cuda` for the CUDA exercise and
+  `nob bench --cuda -- --impl cuda_naive` after correctness passes. On Windows,
+  this uses a separate clang-cl host build and nvcc with VS 2022 Build Tools.
+- CUDA tests must report real incorrect results as failures; missing hardware
+  may be skipped. Never substitute a CPU result for an unfinished GPU kernel.

@@ -20,9 +20,10 @@ and measuring it against earlier versions.
 8. [CPU parallelism](docs/08-parallelism.md): ownership, scheduling and scaling.
 9. [Combining CPU optimizations](docs/09-cpu-optimization.md): layered reuse and practical tradeoffs.
 10. [Comparing with BLAS](docs/10-blas.md): library interfaces and fair measurements.
+11. [GPU execution and memory](docs/11-gpu-execution.md): grids, blocks, ownership and transfers.
 
-The benchmark follows this learning order, with the combined implementation and
-BLAS last. This is an order of complexity; matrix shape and hardware still
+The benchmark follows this learning order, from CPU implementations and BLAS
+to optional GPU backends. This is an order of complexity; matrix shape and hardware still
 influence which implementation is faster.
 
 ## Build, test, measure
@@ -52,6 +53,21 @@ Every action builds first. Nob rebuilds itself when its source changes.
 Arguments before `--` configure Nob; arguments after it configure the test or
 benchmark runner. Use `./nob --help` for build options and
 `./nob bench -- --help` for workload options.
+
+## CUDA exercise
+
+For the guided CUDA exercise, open [the exercise guide](docs/cuda-exercise.md)
+and complete the TODOs in [`src/cuda_naive.cu`](src/cuda_naive.cu). Start with:
+
+```powershell
+.\nob.exe test --cuda --filter cuda
+```
+
+The template compiles but intentionally fails correctness until completed.
+`--cuda` opts into a separate CUDA build and selects clang-cl on Windows;
+ordinary CPU commands keep their defaults. After correctness passes, use
+`nob bench --cuda -- --impl cuda_naive` for complete host-call timings,
+including allocation and transfers.
 
 ## OpenMP thread settings
 

@@ -155,16 +155,25 @@ static bool kernel(const MatmulImplementation *impl) {
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--harness") == 0)
         return harness() ? 0 : 1;
-    if (argc != 1) return 1;
+    const char *only = NULL, *skip = NULL;
+    if (argc == 3 && strcmp(argv[1], "--impl") == 0) only = argv[2];
+    else if (argc == 3 && strcmp(argv[1], "--skip") == 0) skip = argv[2];
+    else if (argc != 1) return 1;
     size_t count;
     const MatmulImplementation *impls = matmul_implementations(&count);
     bool ok = true;
+    bool found = only == NULL;
     for (size_t i = 0; i < count; ++i) {
+        if (skip && strcmp(skip, impls[i].name) == 0) continue;
+        if (only && strcmp(only, impls[i].name) != 0) continue;
+        found = true;
         if (!matmul_implementation_available(&impls[i])) {
-            printf("SKIP %s (unavailable on this CPU/OS)\n", impls[i].name);
+            printf("SKIP %s (unavailable on this machine)\n", impls[i].name);
+            if (only) return 77; /* CTest marks a missing optional device as skipped. */
             continue;
         }
         if (!kernel(&impls[i])) ok = false;
     }
-    return ok ? 0 : 1;
+    if (!found) fprintf(stderr, "Unknown implementation: %s\n", only);
+    return ok && found ? 0 : 1;
 }

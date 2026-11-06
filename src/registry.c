@@ -37,6 +37,9 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
 #ifdef MATMUL_HAVE_OPENBLAS
         {"openblas", matmul_openblas, "OpenBLAS CBLAS SGEMM, row-major, alpha=1 beta=0", NULL},
 #endif
+#ifdef MATMUL_HAVE_CUDA
+        {"cuda_naive", matmul_cuda_naive, "CUDA exercise: one output per thread; host-call timing includes allocation/transfers", matmul_cuda_available},
+#endif
     };
     *count = sizeof implementations / sizeof implementations[0];
     return implementations;

@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
         if (strcmp(arg, "--list") == 0) {
             for (size_t j = 0; j < count; ++j)
                 printf("%s: %s%s\n", impls[j].name, impls[j].description,
-                       matmul_implementation_available(&impls[j]) ? "" : " [unavailable on this CPU/OS]");
+                       matmul_implementation_available(&impls[j]) ? "" : " [unavailable on this machine]");
             return 0;
         }
         if (strcmp(arg, "--csv") == 0) { csv = true; continue; }
@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
         if (strcmp(selected, impls[i].name) == 0) {
             found = true;
             if (!matmul_implementation_available(&impls[i])) {
-                fprintf(stderr, "%s is unavailable on this CPU/OS.\n", selected);
+                fprintf(stderr, "%s is unavailable on this machine.\n", selected);
                 return 1;
             }
         }
@@ -218,6 +218,14 @@ int main(int argc, char **argv) {
                 matmul_openblas_threads(), matmul_openblas_threading());
     }
 #endif
+#ifdef MATMUL_HAVE_CUDA
+    if ((strcmp(selected, "cuda_naive") == 0 || strcmp(selected, "all") == 0) &&
+        matmul_cuda_available()) {
+        fprintf(metadata, "cuda device=\"%s\" timing=host-call "
+                          "includes=allocation,H2D,output-poison,kernel,synchronization,D2H,free\n",
+                matmul_cuda_device_name());
+    }
+#endif
     if (csv) puts("implementation,compiler,build,m,n,k,seed,repeats,warmup,batch,"
                   "min_ms,median_ms,max_ms,gflops,checksum");
     bool ok = true;
@@ -225,7 +233,7 @@ int main(int argc, char **argv) {
         if (strcmp(selected, "all") != 0 && strcmp(selected, impls[i].name) != 0)
             continue;
         if (!matmul_implementation_available(&impls[i])) {
-            fprintf(stderr, "Skipping %s: unavailable on this CPU/OS.\n", impls[i].name);
+            fprintf(stderr, "Skipping %s: unavailable on this machine.\n", impls[i].name);
             continue;
         }
         bool passed;

@@ -9,3 +9,5 @@
 /nob
 /nob.old
 /nob.exe.old
+.clangd
+compile_flags.txt

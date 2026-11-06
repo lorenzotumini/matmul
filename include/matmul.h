@@ -14,10 +14,12 @@ extern "C" {
  * dimensions whose products fit in size_t. No alignment beyond float required.
  * M or N == 0: no output. K == 0: write an M-by-N matrix of zeros.
  * Even for empty arrays, pass valid pointers (the harness does this).
- * Learning kernels perform no heap allocation, I/O, timing, or argument parsing.
+ * CPU learning kernels perform no heap allocation, I/O, timing, or argument parsing.
  * Packed kernels may use bounded automatic workspace, prepared inside the call.
  * External libraries may manage internal workspace; their preparation cost
  * is included in the synchronous call.
+ * GPU wrappers may allocate device buffers and transfer data; all work must
+ * finish before returning. Runtime failures may emit diagnostics and terminate.
  */
 typedef void (*MatmulFn)(size_t m, size_t n, size_t k,
                          const float *a, const float *b, float *c);
@@ -42,6 +44,11 @@ void matmul_cpu_combined(size_t m, size_t n, size_t k,
 void matmul_packed(size_t m, size_t n, size_t k, const float *a, const float *b, float *c);
 void matmul_register_avx(size_t m, size_t n, size_t k, const float *a, const float *b, float *c);
 void matmul_simd_avx512(size_t m, size_t n, size_t k, const float *a, const float *b, float *c);
+/* Optional CUDA exercise: same host-array contract, including transfer costs. */
+void matmul_cuda_naive(size_t m, size_t n, size_t k,
+                       const float *a, const float *b, float *c);
+bool matmul_cuda_available(void);
+const char *matmul_cuda_device_name(void);
 /* Optional OpenBLAS comparison; library metadata is for the runner only. */
 void matmul_openblas(size_t m, size_t n, size_t k,
                       const float *a, const float *b, float *c);
