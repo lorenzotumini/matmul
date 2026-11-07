@@ -23,6 +23,7 @@ and measuring it against earlier versions.
 11. [GPU execution and memory](docs/11-gpu-execution.md): grids, blocks, ownership and transfers.
 12. [GPU shared-memory tiling](docs/12-gpu-tiling.md): cooperative loading, reuse and barriers.
 13. [GPU register tiling](docs/13-gpu-register-tiling.md): multiple outputs per thread and register reuse.
+14. [GPU memory access layout](docs/14-gpu-memory-layout.md): coalescing, banks and output ownership.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -63,17 +64,20 @@ The GPU exercises use the same correctness tests and host-side memory handling:
 - [Naive CUDA](src/cuda_naive.cu): one output per thread.
 - [Shared-memory tiling](docs/12-gpu-tiling.md): cooperative input reuse in
   [`src/cuda_tiled.cu`](src/cuda_tiled.cu).
-- [Register-tiling exercise](docs/cuda-register-tiled-exercise.md): complete the
-  four TODOs in [`src/cuda_register_tiled.cu`](src/cuda_register_tiled.cu).
+- [Register tiling](docs/13-gpu-register-tiling.md): four outputs per thread in
+  [`src/cuda_register_tiled.cu`](src/cuda_register_tiled.cu).
+- [Coalescing exercise](docs/cuda-coalesced-exercise.md): complete two indexing
+  and store TODOs in [`src/cuda_coalesced.cu`](src/cuda_coalesced.cu).
 
 ```powershell
 .\nob.exe test --cuda --filter cuda_naive
 .\nob.exe test --cuda --filter cuda_tiled
 .\nob.exe test --cuda --filter '^cuda_register_tiled$'
+.\nob.exe test --cuda --filter '^cuda_coalesced$'
 ```
 
 A filter of `cuda` runs all GPU checks, including unfinished exercises; use
-the implementation name to focus on one. The register-tiling template compiles
+the implementation name to focus on one. The coalescing template compiles
 but intentionally fails correctness until completed. Default `--impl all` also
 includes it; select a completed baseline when measuring earlier kernels.
 `--cuda` opts into a separate CUDA build and selects clang-cl on Windows;

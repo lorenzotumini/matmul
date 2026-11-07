@@ -19,5 +19,7 @@ void matmul_cuda_tiled_launch(dim3 grid, dim3 block, size_t m, size_t n, size_t 
                               const float *a, const float *b, float *c);
 void matmul_cuda_register_tiled_launch(dim3 grid, dim3 block, size_t m, size_t n, size_t k,
                                        const float *a, const float *b, float *c);
+void matmul_cuda_coalesced_launch(dim3 grid, dim3 block, size_t m, size_t n, size_t k,
+                                  const float *a, const float *b, float *c);
 
 #endif

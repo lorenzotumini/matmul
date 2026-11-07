@@ -43,7 +43,9 @@ static dim3 output_grid(size_t m, size_t n, MatmulCudaLaunchFn launch) {
     /* All kernels use 16x16 THREAD blocks. Register tiling covers a 32x32
      * OUTPUT tile instead of 16x16. Use the same rule in both timing paths.
      */
-    size_t tile = launch == matmul_cuda_register_tiled_launch ? CUDA_REGISTER_TILE : CUDA_TILE;
+    bool register_tiled = launch == matmul_cuda_register_tiled_launch ||
+                          launch == matmul_cuda_coalesced_launch;
+    size_t tile = register_tiled ? CUDA_REGISTER_TILE : CUDA_TILE;
     size_t gx = n / tile + (n % tile != 0);
     size_t gy = m / tile + (m % tile != 0);
     if (gx > (size_t)device.maxGridSize[0] || gy > (size_t)device.maxGridSize[1]) {
@@ -100,6 +102,11 @@ void matmul_cuda_register_tiled(size_t m, size_t n, size_t k,
     matmul_cuda(m, n, k, a, b, c, matmul_cuda_register_tiled_launch);
 }
 
+void matmul_cuda_coalesced(size_t m, size_t n, size_t k,
+                           const float *a, const float *b, float *c) {
+    matmul_cuda(m, n, k, a, b, c, matmul_cuda_coalesced_launch);
+}
+
 /* Benchmark context is plain host data; CUDA handles/buffers are owned here.
  * Keep all timing machinery out of the student's device kernels.
  */
@@ -115,6 +122,7 @@ static MatmulCudaLaunchFn benchmark_launch(MatmulFn implementation) {
     if (implementation == matmul_cuda_naive) return matmul_cuda_naive_launch;
     if (implementation == matmul_cuda_tiled) return matmul_cuda_tiled_launch;
     if (implementation == matmul_cuda_register_tiled) return matmul_cuda_register_tiled_launch;
+    if (implementation == matmul_cuda_coalesced) return matmul_cuda_coalesced_launch;
     return NULL;
 }
 

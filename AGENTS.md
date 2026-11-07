@@ -34,10 +34,11 @@ matrix multiplication kernels manually to understand the basics.
 
 # GPU exercises
 
-- `src/cuda_register_tiled.cu` is an intentionally unfinished 2x2 per-thread
-  register-tiling exercise. Preserve its TODOs for the user. Use
-  `nob test --cuda --filter '^cuda_register_tiled$'` to focus on it. Its host
-  and CUDA-event paths must both use 32x32 output tiles with 16x16 threads.
+- Preserve the completed `src/cuda_register_tiled.cu` baseline.
+- `src/cuda_coalesced.cu` is an intentionally unfinished ownership-remapping
+  exercise. Leave its two TODOs for the user. Use
+  `nob test --cuda --filter '^cuda_coalesced$'`. Both register variants use
+  32x32 output tiles with 16x16 threads in host and CUDA-event paths.
 
 - Preserve the completed `src/cuda_naive.cu` and `src/cuda_tiled.cu` kernels. Use
   `nob test --cuda --filter cuda_tiled` to focus on it; `--filter cuda_naive`
