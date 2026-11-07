@@ -43,8 +43,13 @@ static bool checks(void) {
     REQUIRE(matmul_cuda_benchmark_create(matmul_naive, 1, 1, 1, &dummy, &dummy) == NULL);
     REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_naive, 0, 1, 1, &dummy, &dummy) == NULL);
     REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_tiled, 1, 1, 0, &dummy, &dummy) == NULL);
+    REQUIRE(matmul_cuda_kernel_timing_supported(matmul_cuda_register_tiled));
+    REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_register_tiled, 1, 0, 1, &dummy, &dummy) == NULL);
     matmul_cuda_benchmark_destroy(NULL);
     const size_t shapes[][3] = {{1, 1, 1}, {17, 31, 33}, {33, 17, 65}, {129, 257, 259}};
+    /* Completed baselines only here. The unfinished register-tiling exercise
+     * has its own registered correctness test, which must fail until completed.
+     */
     const MatmulFn implementations[] = {matmul_cuda_naive, matmul_cuda_tiled};
     for (size_t i = 0; i < sizeof implementations / sizeof implementations[0]; ++i) {
         REQUIRE(matmul_cuda_kernel_timing_supported(implementations[i]));

@@ -40,6 +40,7 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
 #ifdef MATMUL_HAVE_CUDA
         {"cuda_naive", matmul_cuda_naive, "CUDA exercise: one output per thread; host-call timing includes allocation/transfers", matmul_cuda_available},
         {"cuda_tiled", matmul_cuda_tiled, "CUDA exercise: shared-memory tiles; host-call timing includes allocation/transfers", matmul_cuda_available},
+        {"cuda_register_tiled", matmul_cuda_register_tiled, "CUDA exercise: 2x2 per-thread register tiles; 32x32 output per block", matmul_cuda_available},
 #endif
     };
     *count = sizeof implementations / sizeof implementations[0];

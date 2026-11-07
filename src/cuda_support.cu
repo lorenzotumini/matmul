@@ -36,16 +36,16 @@ static size_t bytes_for(size_t elements) {
     return elements * sizeof(float);
 }
 
-static dim3 output_grid(size_t m, size_t n) {
+static dim3 output_grid(size_t m, size_t n, MatmulCudaLaunchFn launch) {
     cudaDeviceProp device;
     CUDA_CHECK(cudaGetDeviceProperties(&device, 0));
 
-    /* A block has 16 columns x 16 rows. Round up without overflowing n+15.
-     * The student's bounds check must handle the last partial blocks.
+    /* All kernels use 16x16 THREAD blocks. Register tiling covers a 32x32
+     * OUTPUT tile instead of 16x16. Use the same rule in both timing paths.
      */
-    const dim3 block(CUDA_TILE, CUDA_TILE);
-    size_t gx = n / block.x + (n % block.x != 0);
-    size_t gy = m / block.y + (m % block.y != 0);
+    size_t tile = launch == matmul_cuda_register_tiled_launch ? CUDA_REGISTER_TILE : CUDA_TILE;
+    size_t gx = n / tile + (n % tile != 0);
+    size_t gy = m / tile + (m % tile != 0);
     if (gx > (size_t)device.maxGridSize[0] || gy > (size_t)device.maxGridSize[1]) {
         fprintf(stderr, "CUDA output exceeds this device's 2D grid limits.\n");
         exit(EXIT_FAILURE);
@@ -64,7 +64,7 @@ static void matmul_cuda(size_t m, size_t n, size_t k,
     }
     CUDA_CHECK(cudaSetDevice(0));
     const dim3 block(CUDA_TILE, CUDA_TILE);
-    const dim3 grid = output_grid(m, n);
+    const dim3 grid = output_grid(m, n, launch);
     size_t a_bytes = bytes_for(m*k), b_bytes = bytes_for(k*n), c_bytes = bytes_for(m*n);
     float *da = NULL, *db = NULL, *dc = NULL;
     CUDA_CHECK(cudaMalloc((void **)&da, a_bytes));
@@ -95,6 +95,11 @@ void matmul_cuda_tiled(size_t m, size_t n, size_t k,
     matmul_cuda(m, n, k, a, b, c, matmul_cuda_tiled_launch);
 }
 
+void matmul_cuda_register_tiled(size_t m, size_t n, size_t k,
+                                const float *a, const float *b, float *c) {
+    matmul_cuda(m, n, k, a, b, c, matmul_cuda_register_tiled_launch);
+}
+
 /* Benchmark context is plain host data; CUDA handles/buffers are owned here.
  * Keep all timing machinery out of the student's device kernels.
  */
@@ -109,6 +114,7 @@ struct MatmulCudaBenchmark {
 static MatmulCudaLaunchFn benchmark_launch(MatmulFn implementation) {
     if (implementation == matmul_cuda_naive) return matmul_cuda_naive_launch;
     if (implementation == matmul_cuda_tiled) return matmul_cuda_tiled_launch;
+    if (implementation == matmul_cuda_register_tiled) return matmul_cuda_register_tiled_launch;
     return NULL;
 }
 
@@ -123,7 +129,7 @@ MatmulCudaBenchmark *matmul_cuda_benchmark_create(MatmulFn implementation,
     MatmulCudaBenchmark *context = (MatmulCudaBenchmark *)malloc(sizeof *context);
     if (!context) return NULL;
     CUDA_CHECK(cudaSetDevice(0));
-    dim3 grid = output_grid(m, n);
+    dim3 grid = output_grid(m, n, launch);
     context->m = m; context->n = n; context->k = k;
     context->gx = grid.x; context->gy = grid.y;
     context->c_bytes = bytes_for(m*n);

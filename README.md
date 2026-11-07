@@ -22,6 +22,7 @@ and measuring it against earlier versions.
 10. [Comparing with BLAS](docs/10-blas.md): library interfaces and fair measurements.
 11. [GPU execution and memory](docs/11-gpu-execution.md): grids, blocks, ownership and transfers.
 12. [GPU shared-memory tiling](docs/12-gpu-tiling.md): cooperative loading, reuse and barriers.
+13. [GPU register tiling](docs/13-gpu-register-tiling.md): multiple outputs per thread and register reuse.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -62,14 +63,19 @@ The GPU exercises use the same correctness tests and host-side memory handling:
 - [Naive CUDA](src/cuda_naive.cu): one output per thread.
 - [Shared-memory tiling](docs/12-gpu-tiling.md): cooperative input reuse in
   [`src/cuda_tiled.cu`](src/cuda_tiled.cu).
+- [Register-tiling exercise](docs/cuda-register-tiled-exercise.md): complete the
+  four TODOs in [`src/cuda_register_tiled.cu`](src/cuda_register_tiled.cu).
 
 ```powershell
 .\nob.exe test --cuda --filter cuda_naive
 .\nob.exe test --cuda --filter cuda_tiled
+.\nob.exe test --cuda --filter '^cuda_register_tiled$'
 ```
 
-A filter of `cuda` runs both GPU implementation checks and the CUDA timing check;
-use the implementation name to focus on one.
+A filter of `cuda` runs all GPU checks, including unfinished exercises; use
+the implementation name to focus on one. The register-tiling template compiles
+but intentionally fails correctness until completed. Default `--impl all` also
+includes it; select a completed baseline when measuring earlier kernels.
 `--cuda` opts into a separate CUDA build and selects clang-cl on Windows;
 ordinary CPU commands keep their defaults. After correctness passes, use
 `nob bench --cuda -- --impl cuda_naive` (or `cuda_tiled`) to see complete

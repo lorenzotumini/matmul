@@ -40,8 +40,9 @@ if(NOT CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
     message(FATAL_ERROR "The first CUDA exercise uses NVIDIA nvcc.")
 endif()
 
-set(MATMUL_CUDA_IMPLEMENTATIONS cuda_naive cuda_tiled)
-add_library(matmul_cuda STATIC src/cuda_support.cu src/cuda_naive.cu src/cuda_tiled.cu)
+set(MATMUL_CUDA_IMPLEMENTATIONS cuda_naive cuda_tiled cuda_register_tiled)
+add_library(matmul_cuda STATIC src/cuda_support.cu src/cuda_naive.cu src/cuda_tiled.cu
+    src/cuda_register_tiled.cu)
 target_include_directories(matmul_cuda PRIVATE include)
 set_target_properties(matmul_cuda PROPERTIES CUDA_STANDARD 17
     CUDA_STANDARD_REQUIRED YES CUDA_RUNTIME_LIBRARY Static)

@@ -310,8 +310,7 @@ int main(int argc, char **argv) {
     }
 #endif
 #ifdef MATMUL_HAVE_CUDA
-    if ((strcmp(selected, "cuda_naive") == 0 || strcmp(selected, "cuda_tiled") == 0 ||
-         strcmp(selected, "all") == 0) &&
+    if ((strcmp(selected, "all") == 0 || (requested && cuda_implementation(requested))) &&
         matmul_cuda_available()) {
         fprintf(metadata, "cuda device=\"%s\" %s\n", matmul_cuda_device_name(),
                 strcmp(timing, "both") == 0 ?
