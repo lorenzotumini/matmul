@@ -25,6 +25,13 @@ Device events can measure kernel time separately; they do not substitute for
 a host timer around the complete operation. Workloads reusing device-resident
 data answer a different performance question from one-shot host-array calls.
 
+GPU events record positions in a stream's execution timeline. A start event,
+kernel launches and a stop event on the same stream define a measurement
+window. Wait for the stop event before reading elapsed time. Keep setup and
+transfers outside this window to study device-resident computation, while
+validating the resulting output separately. Finite timer resolution, scheduling
+and gaps between launches still limit precision for very short workloads.
+
 More threads alone do not guarantee high throughput. Repeated input loads,
 memory access patterns, limited parallel work and launch overhead can dominate.
 Shared-memory tiling introduces cooperation within blocks to reuse inputs.

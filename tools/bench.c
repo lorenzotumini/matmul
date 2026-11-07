@@ -1,4 +1,7 @@
 #include "lab.h"
+#ifdef MATMUL_HAVE_CUDA
+#include "cuda_bench.h"
+#endif
 
 #include <float.h>
 #include <inttypes.h>
@@ -15,6 +18,8 @@ static void usage(void) {
          "  --repeats R            Measured samples (default: 7)\n"
          "  --warmup W             Untimed calls (default: 2)\n"
          "  --batch B              Calls per measured sample (default: 1)\n"
+         "  --timing MODE          both (default), host, or kernel (one CUDA --impl)\n"
+         "                         both: full-call time, plus CUDA kernel diagnostics\n"
          "  --seed S               uint32 input seed (default: 42)\n"
          "  --csv                  Write CSV to stdout; metadata to stderr\n"
          "  --help                 Show this help\n"
@@ -40,6 +45,15 @@ static bool number(const char *s, size_t *value) {
 static int compare_double(const void *a, const void *b) {
     double x = *(const double *)a, y = *(const double *)b;
     return (x > y) - (x < y);
+}
+
+static bool cuda_implementation(const MatmulImplementation *impl) {
+#ifdef MATMUL_HAVE_CUDA
+    return matmul_cuda_kernel_timing_supported(impl->run);
+#else
+    (void)impl;
+    return false;
+#endif
 }
 
 static bool profile(const MatmulImplementation *impl, LabProblem *p,
@@ -74,7 +88,7 @@ static bool profile(const MatmulImplementation *impl, LabProblem *p,
 
 static bool measure(const MatmulImplementation *impl, LabProblem *p,
                     size_t repeats, size_t warmup, size_t batch,
-                    uint32_t seed, bool csv, int name_width) {
+                    uint32_t seed, bool csv, int name_width, bool kernel_timing) {
     lab_poison(p);
     impl->run(p->m, p->n, p->k, p->a, p->b, p->c);
     if (!lab_check(p, impl->name)) {
@@ -86,18 +100,56 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
         fprintf(stderr, "Cannot allocate timing samples.\n");
         return false;
     }
+#ifdef MATMUL_HAVE_CUDA
+    MatmulCudaBenchmark *device = NULL;
+    if (kernel_timing) {
+        device = matmul_cuda_benchmark_create(impl->run, p->m, p->n, p->k, p->a, p->b);
+        if (!device) {
+            fprintf(stderr, "Cannot prepare CUDA kernel benchmark.\n");
+            free(samples);
+            return false;
+        }
+        /* Validate this distinct, prepared-buffer path before reporting times. */
+        (void)matmul_cuda_benchmark_sample(device, 1);
+        lab_poison(p);
+        matmul_cuda_benchmark_read(device, p->c);
+        if (!lab_check(p, impl->name)) {
+            fprintf(stderr, "No performance result: prepared CUDA output is incorrect.\n");
+            matmul_cuda_benchmark_destroy(device);
+            free(samples);
+            return false;
+        }
+    }
+#endif
     for (size_t i = 0; i < warmup; ++i) {
+#ifdef MATMUL_HAVE_CUDA
+        if (device) {
+            (void)matmul_cuda_benchmark_sample(device, 1);
+            continue;
+        }
+#endif
         impl->run(p->m, p->n, p->k, p->a, p->b, p->c);
     }
     for (size_t i = 0; i < repeats; ++i) {
-        double start = lab_seconds();
-        for (size_t j = 0; j < batch; ++j) {
-            impl->run(p->m, p->n, p->k, p->a, p->b, p->c);
+#ifdef MATMUL_HAVE_CUDA
+        if (device) {
+            samples[i] = matmul_cuda_benchmark_sample(device, batch);
+            matmul_cuda_benchmark_read(device, p->c);
+        } else
+#endif
+        {
+            double start = lab_seconds();
+            for (size_t j = 0; j < batch; ++j) {
+                impl->run(p->m, p->n, p->k, p->a, p->b, p->c);
+            }
+            samples[i] = (lab_seconds() - start) / (double)batch;
         }
-        samples[i] = (lab_seconds() - start) / (double)batch;
         /* Validation, the oracle, and allocation are outside the timer. */
-        if (samples[i] <= 0.0 || !lab_check(p, impl->name)) {
+        if (!isfinite(samples[i]) || samples[i] <= 0.0 || !lab_check(p, impl->name)) {
             fprintf(stderr, "Invalid sample (for tiny matrices, increase --batch).\n");
+#ifdef MATMUL_HAVE_CUDA
+            matmul_cuda_benchmark_destroy(device);
+#endif
             free(samples);
             return false;
         }
@@ -109,17 +161,30 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
                     median / 1e9;
     double checksum = 0.0;
     for (size_t i = 0; i < p->m * p->n; ++i) checksum += p->c[i];
+    const char *timing = kernel_timing ? "kernel" : "host";
+    /* CPU throughput includes packing/team coordination. GPU full-call
+     * latency includes transfers; publish its arithmetic throughput only
+     * from the separate CUDA-event measurement.
+     */
+    bool show_gflops = kernel_timing || !cuda_implementation(impl);
     if (csv) {
-        printf("%s,%s,%s,%zu,%zu,%zu,%" PRIu32 ",%zu,%zu,%zu,%.9g,%.9g,%.9g,%.9g,%.17g\n",
+        printf("%s,%s,%s,%zu,%zu,%zu,%" PRIu32 ",%zu,%zu,%zu,%.9g,%.9g,%.9g,",
                impl->name, LAB_COMPILER, LAB_BUILD, p->m, p->n, p->k, seed,
                repeats, warmup, batch, samples[0] * 1e3, median * 1e3,
-               samples[repeats - 1] * 1e3, gflops, checksum);
+               samples[repeats - 1] * 1e3);
+        if (show_gflops) printf("%.9g", gflops);
+        printf(",%.17g,%s\n", checksum, timing);
     } else {
-        printf("%-*s min/median/max: %.6g / %.6g / %.6g ms; "
-               "%.3f GFLOP/s; checksum %.9g\n",
-               name_width, impl->name, samples[0] * 1e3, median * 1e3,
-               samples[repeats - 1] * 1e3, gflops, checksum);
+        printf("%-*s %s min/median/max: %.6g / %.6g / %.6g ms",
+               name_width, impl->name, kernel_timing ? "kernel   " : "full-call",
+               samples[0] * 1e3, median * 1e3, samples[repeats - 1] * 1e3);
+        if (show_gflops)
+            printf("; %.3f %s GFLOP/s", gflops, kernel_timing ? "kernel" : "effective");
+        printf("; checksum %.9g\n", checksum);
     }
+#ifdef MATMUL_HAVE_CUDA
+    matmul_cuda_benchmark_destroy(device);
+#endif
     free(samples);
     return true;
 }
@@ -128,6 +193,7 @@ int main(int argc, char **argv) {
     size_t m = 256, n = 256, k = 256, repeats = 7, warmup = 2, batch = 1;
     size_t seed = 42;
     const char *selected = "all";
+    const char *timing = "both";
     bool csv = false, profiling = false, validate_only = false;
     size_t count;
     const MatmulImplementation *impls = matmul_implementations(&count);
@@ -148,6 +214,11 @@ int main(int argc, char **argv) {
             selected = argv[i];
             continue;
         }
+        if (strcmp(arg, "--timing") == 0) {
+            if (++i >= argc) { fprintf(stderr, "Missing timing mode.\n"); return 1; }
+            timing = argv[i];
+            continue;
+        }
         size_t *destination = NULL;
         if (strcmp(arg, "--m") == 0) destination = &m;
         else if (strcmp(arg, "--n") == 0) destination = &n;
@@ -161,6 +232,16 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+    if (strcmp(timing, "both") != 0 && strcmp(timing, "host") != 0 && strcmp(timing, "kernel") != 0) {
+        fprintf(stderr, "--timing must be both, host or kernel.\n");
+        return 1;
+    }
+    bool kernel_timing = strcmp(timing, "kernel") == 0;
+    if (kernel_timing && (profiling || validate_only)) {
+        fprintf(stderr, "Kernel timing is a benchmark mode; omit --profile/--validate-only.\n");
+        return 1;
+    }
+    if (profiling || validate_only) timing = "host";
     if (!m || !n || !k || !repeats || !batch || seed > UINT32_MAX ||
         repeats > SIZE_MAX / sizeof(double) || (double)k * FLT_EPSILON >= 0.01) {
         fprintf(stderr, "Dimensions, repeats and batch must be positive and fit "
@@ -168,10 +249,12 @@ int main(int argc, char **argv) {
         return 1;
     }
     bool found = strcmp(selected, "all") == 0;
+    const MatmulImplementation *requested = NULL;
     int name_width = 12;
     for (size_t i = 0; i < count; ++i) {
         if (strcmp(selected, impls[i].name) == 0) {
             found = true;
+            requested = &impls[i];
             if (!matmul_implementation_available(&impls[i])) {
                 fprintf(stderr, "%s is unavailable on this machine.\n", selected);
                 return 1;
@@ -183,6 +266,14 @@ int main(int argc, char **argv) {
         }
     }
     if (!found) { fprintf(stderr, "Unknown implementation: %s\n", selected); return 1; }
+    if (kernel_timing) {
+        bool supported = requested && cuda_implementation(requested);
+        if (!supported) {
+            fprintf(stderr, "Kernel timing requires a CUDA build and one named CUDA implementation. "
+                            "Use nob bench --cuda -- --impl cuda_tiled --timing kernel.\n");
+            return 1;
+        }
+    }
     if (validate_only && csv) {
         fprintf(stderr, "--validate-only does not produce benchmark CSV.\n");
         return 1;
@@ -207,10 +298,10 @@ int main(int argc, char **argv) {
      * CSV keeps metadata on stderr so stdout remains machine-readable.
      */
     FILE *metadata = csv ? stderr : stdout;
-    fprintf(metadata, "mode=%s compiler=%s build=%s M=%zu N=%zu K=%zu seed=%zu "
+    fprintf(metadata, "mode=%s compiler=%s build=%s timing=%s M=%zu N=%zu K=%zu seed=%zu "
                     "repeats=%zu warmup=%zu batch=%zu\n",
             validate_only ? "validate" : profiling ? "profile" : "benchmark", LAB_COMPILER, LAB_BUILD,
-            m, n, k, seed, repeats, warmup, batch);
+            timing, m, n, k, seed, repeats, warmup, batch);
 #ifdef MATMUL_HAVE_OPENBLAS
     if (strcmp(selected, "openblas") == 0 || strcmp(selected, "all") == 0) {
         fprintf(metadata, "openblas config=\"%s\" core=%s configured_threads=%d threading=%s\n",
@@ -222,13 +313,17 @@ int main(int argc, char **argv) {
     if ((strcmp(selected, "cuda_naive") == 0 || strcmp(selected, "cuda_tiled") == 0 ||
          strcmp(selected, "all") == 0) &&
         matmul_cuda_available()) {
-        fprintf(metadata, "cuda device=\"%s\" timing=host-call "
-                          "includes=allocation,H2D,output-poison,kernel,synchronization,D2H,free\n",
-                matmul_cuda_device_name());
+        fprintf(metadata, "cuda device=\"%s\" %s\n", matmul_cuda_device_name(),
+                strcmp(timing, "both") == 0 ?
+                "full-call-clock=host kernel-clock=cuda-events kernel-data=device-resident "
+                "measurements=separate compare=full-call-ms" : kernel_timing ?
+                "clock=cuda-events data=device-resident includes=kernel-batch "
+                "excludes=allocation,H2D,output-poison,D2H,free" :
+                "clock=host includes=allocation,H2D,output-poison,kernel,synchronization,D2H,free");
     }
 #endif
     if (csv) puts("implementation,compiler,build,m,n,k,seed,repeats,warmup,batch,"
-                  "min_ms,median_ms,max_ms,gflops,checksum");
+                  "min_ms,median_ms,max_ms,gflops,checksum,timing");
     bool ok = true;
     for (size_t i = 0; i < count; ++i) {
         if (strcmp(selected, "all") != 0 && strcmp(selected, impls[i].name) != 0)
@@ -244,9 +339,15 @@ int main(int argc, char **argv) {
             passed = lab_check(&p, impls[i].name);
             if (passed) printf("Validated %s\n", impls[i].name);
         } else {
-            passed = profiling ? profile(&impls[i], &p, repeats, warmup, batch) :
-                                  measure(&impls[i], &p, repeats, warmup, batch,
-                                          (uint32_t)seed, csv, name_width);
+            if (profiling) {
+                passed = profile(&impls[i], &p, repeats, warmup, batch);
+            } else {
+                passed = measure(&impls[i], &p, repeats, warmup, batch,
+                                 (uint32_t)seed, csv, name_width, kernel_timing);
+                if (passed && strcmp(timing, "both") == 0 && cuda_implementation(&impls[i]))
+                    passed = measure(&impls[i], &p, repeats, warmup, batch,
+                                     (uint32_t)seed, csv, name_width, true);
+            }
         }
         if (!passed)
             ok = false;

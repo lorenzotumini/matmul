@@ -75,7 +75,7 @@ guarded allocations to catch out-of-bounds accesses as well as wrong results.
 
 ## What a timing means
 
-The current benchmark measures a synchronous call on preallocated host arrays.
+The common comparison is a synchronous call on preallocated host arrays.
 Data generation, the double oracle, allocation by the runner, validation,
 sorting and printing happen outside the timer. Any preparation performed
 inside the kernel is included. Do not give one version a free transpose or
@@ -92,7 +92,11 @@ Profiles locate hotspots and have different measurement conditions from the
 benchmark. Use [the profiling guide](profiling.md) for that workflow.
 
 Minimum, median and maximum show some timing variation. GFLOP/s uses the
-median. The checksum makes output observable, but correctness comes from the
+median. CPU full-call throughput is labeled effective GFLOP/s, including
+packing and thread coordination. GPU full-call rows report milliseconds;
+their GFLOP/s field is omitted. Separate CUDA-event rows expose GPU kernel
+throughput as a diagnostic, rather than a ranking against CPU full-call
+throughput. The checksum makes output observable, but correctness comes from the
 elementwise reference check, not from the checksum.
 
 CSV includes compiler/version, CMake configuration, dimensions, seed, repeats,
@@ -109,7 +113,48 @@ Report kernel-only/device timings separately.
 
 The CUDA learning backends use a fresh device allocation per host call. Input
 copies, NaN output initialization, launch, synchronization, output copy and
-freeing are included. This intentionally simple baseline does not retain
-device buffers or publish a kernel-only measurement. Device errors terminate
+freeing are included. This host-call baseline does not retain device buffers.
+Device errors terminate
 with diagnostics because the shared void-returning interface cannot carry an
 error code. Missing hardware is detected before invoking the backend.
+
+## CUDA event measurements
+
+The default `--timing both` measures full calls for all backends and adds a
+separate CUDA-event measurement for each available CUDA backend, including
+when `--impl all` is selected. CPU backends have only the full-call row. Use
+`--timing host` to request only full-call measurements or `--timing kernel`
+to request only CUDA events for one named CUDA implementation.
+
+CUDA-event measurements use reusable device buffers. Allocation, one-time
+input copies and event creation happen
+before sampling. The prepared path is validated against the same double oracle
+in addition to the initial host-call validation.
+
+Every sample poisons device C before its start event, then queues `batch`
+launches on the same default stream and records a stop event. Waiting for the
+stop event reports execution errors and ensures completion before elapsed time
+is read. CUDA-event milliseconds are converted to seconds and divided by batch.
+Output is copied back and checked outside the interval after every sample.
+Device buffers and events are freed after measurement. Warmup launches use
+the same prepared buffers and are not included in the reported sample set.
+
+This measures a window on the GPU timeline, excluding allocation, copies,
+poisoning, host validation and cleanup. It includes any scheduling delays or
+launch gaps inside that window. No other GPU workloads should be run during a
+comparison. Inputs are reused and caches are not flushed. Tiny kernels can
+benefit from batching but are still sensitive to event resolution and host
+launch throughput. This is not a cold-data or end-to-end latency measurement.
+
+Human output labels rows `full-call` or `kernel`. The final CSV `timing`
+column contains `host` or `kernel`; GPU host rows have an empty `gflops` field,
+while CPU host rows retain effective throughput. Both measurements use the
+same dimensions and sampling settings but run separately. Their difference
+does not isolate an exact transfer cost: preparation, cache state and scheduling
+also differ. Compare full-call milliseconds for host-array workloads; do not
+mix CPU effective GFLOP/s and GPU kernel GFLOP/s as an equivalent ranking.
+Kernel timing is unavailable in CPU-only builds and is not an
+internal Samply profile/validation mode.
+
+CUDA event semantics and approximate timer resolution are documented in the
+[CUDA runtime event API](https://docs.nvidia.com/cuda/archive/12.4.0/cuda-runtime-api/group__CUDART__EVENT.html).

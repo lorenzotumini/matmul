@@ -68,11 +68,51 @@ The GPU exercises use the same correctness tests and host-side memory handling:
 .\nob.exe test --cuda --filter cuda_tiled
 ```
 
-A filter of `cuda` runs both GPU tests; use the implementation name to focus on one.
+A filter of `cuda` runs both GPU implementation checks and the CUDA timing check;
+use the implementation name to focus on one.
 `--cuda` opts into a separate CUDA build and selects clang-cl on Windows;
 ordinary CPU commands keep their defaults. After correctness passes, use
-`nob bench --cuda -- --impl cuda_naive` (or `cuda_tiled`) for complete host-call timings,
-including allocation and transfers.
+`nob bench --cuda -- --impl cuda_naive` (or `cuda_tiled`) to see complete
+host-call latency and separate GPU kernel diagnostics together.
+
+### CUDA timing
+
+The default `--timing both` reports full-call milliseconds for every backend,
+then adds a separate kernel-time row for each CUDA implementation:
+
+```powershell
+.\nob.exe bench --cuda -- --impl cuda_naive --m 512 --n 512 --k 512
+.\nob.exe bench --cuda -- --impl cuda_tiled --m 512 --n 512 --k 512
+```
+
+Compare the **full-call milliseconds** across CPU and GPU: CPU calls include
+packing and thread coordination; GPU calls include device allocations,
+input/output copies, output poisoning and cleanup. CPU rows retain clearly
+labeled effective GFLOP/s. GPU full-call rows show no GFLOP/s; CUDA-event rows
+show kernel GFLOP/s as a diagnostic of device-resident computation.
+
+Use `--timing host` for full-call results only, or `--timing kernel` for only
+the CUDA-event measurement. The kernel-only option requires one named CUDA
+implementation; it rejects `--impl all`, CPU implementations and internal
+profile/validation modes. Default `both` works with `--impl all`. Inputs
+are copied to device buffers once and reused for validation, warmups and samples.
+Allocation, transfers, output poisoning and event creation/destruction stay
+outside the event interval. Results are copied back and checked before reporting
+times and after every sample. The ordinary host-array kernels retain their
+original behavior.
+
+`--batch B` launches B kernels between the start/stop events and reports time
+per launch. For tiny kernels, a larger batch (for example 100) can reduce the
+relative effect of event resolution. GPU scheduling and gaps between host
+launches can still affect this interval; do not interpret it as an exact
+instruction-level kernel duration. These are warm, reused-buffer measurements.
+
+Human rows label `full-call` or `kernel`. CSV has a `timing` column after
+`checksum`, containing `host` or `kernel`; default CUDA runs produce two rows.
+The `gflops` field is empty for GPU host rows, numeric for CPU effective
+throughput and GPU kernel throughput. Metadata stays on stderr. Keep those
+throughput scopes separate. The two GPU rows are separate experiments, so
+subtracting their times does not isolate an exact transfer cost.
 
 ## OpenMP thread settings
 
