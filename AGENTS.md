@@ -34,15 +34,27 @@ matrix multiplication kernels manually to understand the basics.
 
 # GPU exercises
 
+- `src/cuda_combined.cu` is a complete combined reference requested by the
+  user. Preserve the earlier learning kernels. Keep its grid selection and
+  launch strategy consistent in both timing paths; its fast paths use 32x8
+  thread blocks, unlike the 16x16 learning kernels.
+
 - Preserve the completed `src/cuda_register_tiled.cu` baseline.
-- `src/cuda_coalesced.cu` is an intentionally unfinished ownership-remapping
-  exercise. Leave its two TODOs for the user. Use
-  `nob test --cuda --filter '^cuda_coalesced$'`. Both register variants use
-  32x32 output tiles with 16x16 threads in host and CUDA-event paths.
+- `src/cuda_prefetch.cu` is a complete standalone reference requested by the
+  user. It keeps the register-tiled baseline's 32x32 output tiles, 16x16 threads
+  and adjacent 2x2 ownership; only the load schedule changes. Use
+  `nob test --cuda --filter '^cuda_prefetch$'`. Keep its geometry identical in
+  host and CUDA-event paths. Preserve the retired ownership experiment in
+  `experiments/cuda_coalesced.cu`; it is outside the build/registry.
+
+- `cublas` is an optional complete library reference, using FP32 pedantic
+  SGEMM and the same full-call/device-event measurement rules. Keep handle
+  initialization outside sampling and report its math mode/version.
 
 - Preserve the completed `src/cuda_naive.cu` and `src/cuda_tiled.cu` kernels. Use
   `nob test --cuda --filter cuda_tiled` to focus on it; `--filter cuda_naive`
-  checks the earlier baseline and `--filter cuda` checks both.
+  checks the earlier baseline and `--filter cuda` checks all custom CUDA
+  backends and prepared timing.
 
 - Do not fill exercise TODOs merely to make tests pass. Supplied host plumbing belongs in
   `src/cuda_support.cu`.

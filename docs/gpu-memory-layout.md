@@ -1,4 +1,4 @@
-# 14 — GPU memory access layout
+# GPU memory access layout
 
 The set of values computed by a block does not uniquely determine which
 thread owns each output. Different ownership mappings can perform the same

@@ -41,7 +41,13 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
         {"cuda_naive", matmul_cuda_naive, "CUDA exercise: one output per thread; host-call timing includes allocation/transfers", matmul_cuda_available},
         {"cuda_tiled", matmul_cuda_tiled, "CUDA exercise: shared-memory tiles; host-call timing includes allocation/transfers", matmul_cuda_available},
         {"cuda_register_tiled", matmul_cuda_register_tiled, "CUDA exercise: 2x2 per-thread register tiles; 32x32 output per block", matmul_cuda_available},
-        {"cuda_coalesced", matmul_cuda_coalesced, "CUDA exercise: remapped register tiles for contiguous lane accesses", matmul_cuda_available},
+        {"cuda_prefetch", matmul_cuda_prefetch, "Register-tiled baseline with next-tile register prefetch (same layout and tile size)", matmul_cuda_available},
+#endif
+#ifdef MATMUL_HAVE_CUDA
+        {"cuda_combined", matmul_cuda_combined, "Adaptive SIMT tiles, register reuse and software prefetch", matmul_cuda_available},
+#endif
+#ifdef MATMUL_HAVE_CUBLAS
+        {"cublas", matmul_cublas, "cuBLAS SGEMM, FP32 pedantic, alpha=1 beta=0", matmul_cuda_available},
 #endif
     };
     *count = sizeof implementations / sizeof implementations[0];

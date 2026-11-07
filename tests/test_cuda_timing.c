@@ -45,20 +45,24 @@ static bool checks(void) {
     REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_tiled, 1, 1, 0, &dummy, &dummy) == NULL);
     REQUIRE(matmul_cuda_kernel_timing_supported(matmul_cuda_register_tiled));
     REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_register_tiled, 1, 0, 1, &dummy, &dummy) == NULL);
-    REQUIRE(matmul_cuda_kernel_timing_supported(matmul_cuda_coalesced));
-    REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_coalesced, 0, 1, 1, &dummy, &dummy) == NULL);
+    REQUIRE(matmul_cuda_kernel_timing_supported(matmul_cuda_prefetch));
+    REQUIRE(matmul_cuda_benchmark_create(matmul_cuda_prefetch, 0, 1, 1, &dummy, &dummy) == NULL);
     matmul_cuda_benchmark_destroy(NULL);
-    const size_t shapes[][3] = {{1, 1, 1}, {17, 31, 33}, {33, 17, 65}, {129, 257, 259}};
-    /* Completed baselines only here. The unfinished coalescing exercise
-     * has its own registered correctness test, which must fail until completed.
-     */
+    const size_t shapes[][3] = {{1, 1, 1}, {17, 31, 33}, {33, 17, 65}, {129, 257, 259}, {65, 257, 259}, {128, 128, 127}, {128, 128, 128}};
+    /* Exercise each completed prepared path as well as the host wrappers. */
     const MatmulFn implementations[] = {matmul_cuda_naive, matmul_cuda_tiled,
-                                      matmul_cuda_register_tiled};
+                                      matmul_cuda_register_tiled, matmul_cuda_prefetch, matmul_cuda_combined,
+#ifdef MATMUL_HAVE_CUBLAS
+                                      matmul_cublas,
+#endif
+    };
     for (size_t i = 0; i < sizeof implementations / sizeof implementations[0]; ++i) {
         REQUIRE(matmul_cuda_kernel_timing_supported(implementations[i]));
         for (size_t s = 0; s < sizeof shapes / sizeof shapes[0]; ++s)
             REQUIRE(prepared_case(implementations[i], shapes[s][0], shapes[s][1], shapes[s][2]));
     }
+    REQUIRE(prepared_case(matmul_cuda_combined, 33, 513, 129)); /* Short-wide tile + tails. */
+    REQUIRE(prepared_case(matmul_cuda_combined, 513, 515, 129)); /* Large tile + all axis tails. */
     return true;
 }
 

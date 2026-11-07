@@ -23,7 +23,9 @@ and measuring it against earlier versions.
 11. [GPU execution and memory](docs/11-gpu-execution.md): grids, blocks, ownership and transfers.
 12. [GPU shared-memory tiling](docs/12-gpu-tiling.md): cooperative loading, reuse and barriers.
 13. [GPU register tiling](docs/13-gpu-register-tiling.md): multiple outputs per thread and register reuse.
-14. [GPU memory access layout](docs/14-gpu-memory-layout.md): coalescing, banks and output ownership.
+14. [GPU software prefetching](docs/14-gpu-prefetch.md): staging future inputs in registers, latency hiding and barriers.
+15. [Combining GPU optimizations](docs/15-gpu-combination.md): hierarchical reuse, software prefetch and dimension-based selection.
+16. [Comparing with GPU BLAS](docs/16-gpu-blas.md): cuBLAS, precision modes and measurement boundaries.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -66,24 +68,45 @@ The GPU exercises use the same correctness tests and host-side memory handling:
   [`src/cuda_tiled.cu`](src/cuda_tiled.cu).
 - [Register tiling](docs/13-gpu-register-tiling.md): four outputs per thread in
   [`src/cuda_register_tiled.cu`](src/cuda_register_tiled.cu).
-- [Coalescing exercise](docs/cuda-coalesced-exercise.md): complete two indexing
-  and store TODOs in [`src/cuda_coalesced.cu`](src/cuda_coalesced.cu).
+- [Software prefetching](docs/14-gpu-prefetch.md): next-tile inputs staged in
+  registers in [`src/cuda_prefetch.cu`](src/cuda_prefetch.cu), keeping the
+  register-tiled baseline's geometry, ownership and arithmetic.
+- [Combined CUDA](src/cuda_combined.cu): readable warp-aligned tiles, register
+  reuse, software prefetch and a small dimension-based dispatcher.
 
 ```powershell
 .\nob.exe test --cuda --filter cuda_naive
 .\nob.exe test --cuda --filter cuda_tiled
 .\nob.exe test --cuda --filter '^cuda_register_tiled$'
-.\nob.exe test --cuda --filter '^cuda_coalesced$'
+.\nob.exe test --cuda --filter '^cuda_prefetch$'
 ```
 
-A filter of `cuda` runs all GPU checks, including unfinished exercises; use
-the implementation name to focus on one. The coalescing template compiles
-but intentionally fails correctness until completed. Default `--impl all` also
-includes it; select a completed baseline when measuring earlier kernels.
+A filter of `cuda` runs custom GPU checks and the timing check; `cublas`
+selects the library reference check. Use the implementation name to focus
+on one, or omit the filter to run the complete suite.
 `--cuda` opts into a separate CUDA build and selects clang-cl on Windows;
 ordinary CPU commands keep their defaults. After correctness passes, use
 `nob bench --cuda -- --impl cuda_naive` (or `cuda_tiled`) to see complete
 host-call latency and separate GPU kernel diagnostics together.
+
+To isolate prefetching, compare `cuda_register_tiled` and `cuda_prefetch` with
+the same dimensions and sampling options:
+
+```powershell
+.\nob.exe bench --cuda -- --impl cuda_register_tiled --m 512 --n 512 --k 512
+.\nob.exe bench --cuda -- --impl cuda_prefetch --m 512 --n 512 --k 512
+```
+
+Both use 16x16 threads, 32x32 output tiles, depth-16 shared inputs and four
+adjacent outputs per thread. The prefetched version primes the first tile,
+fetches the next one into registers before computing, then publishes it after
+all shared-memory readers finish. Register pressure can offset any benefit.
+The combined backend uses this scheduling idea with its own tile/layout rules.
+
+The earlier ownership-remapping source is preserved in
+[archived experiments](experiments/README.md), outside the build and registry.
+Its [memory-layout summary](docs/gpu-memory-layout.md) remains a reference for
+coalescing and shared-memory banks.
 
 ### CUDA timing
 
@@ -123,6 +146,63 @@ The `gflops` field is empty for GPU host rows, numeric for CPU effective
 throughput and GPU kernel throughput. Metadata stays on stderr. Keep those
 throughput scopes separate. The two GPU rows are separate experiments, so
 subtracting their times does not isolate an exact transfer cost.
+
+### cuBLAS reference
+
+CUDA builds also discover the toolkit's cuBLAS library, when available. The
+`cublas` entry uses float32 SGEMM with `alpha=1`, `beta=0` and explicit
+`CUBLAS_PEDANTIC_MATH`. It adapts row-major arrays by swapping operands and
+dimensions, without a transpose copy. Your learning kernels are unchanged.
+
+```powershell
+.\nob.exe test --cuda --filter cublas
+.\nob.exe bench --cuda -- --impl cuda_register_tiled --m 512 --n 512 --k 512
+.\nob.exe bench --cuda -- --impl cublas --m 512 --n 512 --k 512
+```
+
+Both full-call and CUDA-event rows use the existing validator and sampling
+settings. cuBLAS reuses a handle per host thread on device 0; handle creation
+and initial library warmup are outside sampling. Full calls include the same
+allocation, transfers, output poisoning and cleanup as the learning wrappers.
+Event timing covers the whole cuBLAS operation, including any library GPU
+preparation or multiple kernels, over resident device buffers. It excludes
+handle creation and host transfers, just like the prepared custom-kernel path.
+
+The metadata reports the cuBLAS version and precision mode. On Windows,
+the CUDA toolkit's `bin` directory must remain on PATH for its cuBLAS DLLs
+(normally it is already there for `nvcc`). CMake's `MATMUL_ENABLE_CUBLAS`
+option can disable this optional reference without disabling CUDA exercises.
+
+### Combined CUDA reference
+
+`cuda_combined` keeps the ordinary host-array contract and both timing paths.
+Its dispatcher and kernel are in `src/cuda_combined.cu`. All arithmetic uses
+float32 CUDA-core FMA; this backend does not call cuBLAS or use Tensor Cores.
+
+| Ordered selection rule | Path |
+| --- | --- |
+| M < 32, N < 32, or K < 16 | Existing 16x16 shared-memory kernel |
+| M*N*K < 128 cubed | Existing 32x32 register-tiled kernel |
+| M < 128 | 32x64 prefetched tile if N >= 512; otherwise existing register kernel |
+| M,N >= 512 and K >= 128 | 128x128 prefetched tile |
+| Remaining shapes | 64x64 prefetched tile |
+
+The new kernels use 256 threads arranged as 32 columns by 8 warps. Each
+thread owns multiple rows and groups of 32-spaced columns. Shared inputs are
+cooperatively loaded; scalars for the next depth-16 reduction tile are prefetched
+into registers before current-tile arithmetic. All boundary loads and stores
+are guarded. No allocation, data transfers or tuning search occurs inside the
+device kernels. Allocation and transfers remain inside full-call measurements.
+
+These heuristics came from a small local MX330 sweep, not a general GPU
+autotuner. Larger tiles and prefetch can trade reuse for occupancy. Small and
+awkward shapes can still favor another kernel or library algorithm.
+
+```powershell
+.\nob.exe test --cuda --filter 'cuda_combined|cuda_timing'
+.\nob.exe bench --cuda -- --impl cuda_combined --m 512 --n 512 --k 512
+.\nob.exe bench --cuda -- --impl cublas --m 512 --n 512 --k 512
+```
 
 ## OpenMP thread settings
 

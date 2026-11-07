@@ -36,15 +36,32 @@ static size_t bytes_for(size_t elements) {
     return elements * sizeof(float);
 }
 
-static dim3 output_grid(size_t m, size_t n, MatmulCudaLaunchFn launch) {
+static dim3 output_grid(size_t m, size_t n, size_t k, MatmulCudaLaunchFn launch) {
+#ifdef MATMUL_HAVE_CUBLAS
+    if (launch == matmul_cublas_launch) {
+        /* Validate the library ABI and initialize its handle before events.
+         * Educational-kernel grid limits do not apply to the library.
+         */
+        matmul_cublas_prepare(m, n, k);
+        return dim3(1, 1);
+    }
+#endif
     cudaDeviceProp device;
     CUDA_CHECK(cudaGetDeviceProperties(&device, 0));
 
-    /* All kernels use 16x16 THREAD blocks. Register tiling covers a 32x32
+    if (launch == matmul_cuda_combined_launch) {
+        dim3 grid = matmul_cuda_combined_grid(m, n, k);
+        if (grid.x > (unsigned)device.maxGridSize[0] || grid.y > (unsigned)device.maxGridSize[1]) {
+            fprintf(stderr, "CUDA combined output exceeds device grid limits.\n");
+            exit(EXIT_FAILURE);
+        }
+        return grid;
+    }
+    /* Learning kernels use 16x16 THREAD blocks. Register tiling covers a 32x32
      * OUTPUT tile instead of 16x16. Use the same rule in both timing paths.
      */
     bool register_tiled = launch == matmul_cuda_register_tiled_launch ||
-                          launch == matmul_cuda_coalesced_launch;
+                          launch == matmul_cuda_prefetch_launch;
     size_t tile = register_tiled ? CUDA_REGISTER_TILE : CUDA_TILE;
     size_t gx = n / tile + (n % tile != 0);
     size_t gy = m / tile + (m % tile != 0);
@@ -66,7 +83,7 @@ static void matmul_cuda(size_t m, size_t n, size_t k,
     }
     CUDA_CHECK(cudaSetDevice(0));
     const dim3 block(CUDA_TILE, CUDA_TILE);
-    const dim3 grid = output_grid(m, n, launch);
+    const dim3 grid = output_grid(m, n, k, launch);
     size_t a_bytes = bytes_for(m*k), b_bytes = bytes_for(k*n), c_bytes = bytes_for(m*n);
     float *da = NULL, *db = NULL, *dc = NULL;
     CUDA_CHECK(cudaMalloc((void **)&da, a_bytes));
@@ -102,10 +119,22 @@ void matmul_cuda_register_tiled(size_t m, size_t n, size_t k,
     matmul_cuda(m, n, k, a, b, c, matmul_cuda_register_tiled_launch);
 }
 
-void matmul_cuda_coalesced(size_t m, size_t n, size_t k,
+void matmul_cuda_prefetch(size_t m, size_t n, size_t k,
                            const float *a, const float *b, float *c) {
-    matmul_cuda(m, n, k, a, b, c, matmul_cuda_coalesced_launch);
+    matmul_cuda(m, n, k, a, b, c, matmul_cuda_prefetch_launch);
 }
+
+void matmul_cuda_combined(size_t m, size_t n, size_t k,
+    const float *a, const float *b, float *c) {
+    matmul_cuda(m, n, k, a, b, c, matmul_cuda_combined_launch);
+}
+
+#ifdef MATMUL_HAVE_CUBLAS
+void matmul_cublas(size_t m, size_t n, size_t k,
+                    const float *a, const float *b, float *c) {
+    matmul_cuda(m, n, k, a, b, c, matmul_cublas_launch);
+}
+#endif
 
 /* Benchmark context is plain host data; CUDA handles/buffers are owned here.
  * Keep all timing machinery out of the student's device kernels.
@@ -119,10 +148,14 @@ struct MatmulCudaBenchmark {
 };
 
 static MatmulCudaLaunchFn benchmark_launch(MatmulFn implementation) {
+    if (implementation == matmul_cuda_combined) return matmul_cuda_combined_launch;
     if (implementation == matmul_cuda_naive) return matmul_cuda_naive_launch;
     if (implementation == matmul_cuda_tiled) return matmul_cuda_tiled_launch;
     if (implementation == matmul_cuda_register_tiled) return matmul_cuda_register_tiled_launch;
-    if (implementation == matmul_cuda_coalesced) return matmul_cuda_coalesced_launch;
+    if (implementation == matmul_cuda_prefetch) return matmul_cuda_prefetch_launch;
+#ifdef MATMUL_HAVE_CUBLAS
+    if (implementation == matmul_cublas) return matmul_cublas_launch;
+#endif
     return NULL;
 }
 
@@ -137,7 +170,7 @@ MatmulCudaBenchmark *matmul_cuda_benchmark_create(MatmulFn implementation,
     MatmulCudaBenchmark *context = (MatmulCudaBenchmark *)malloc(sizeof *context);
     if (!context) return NULL;
     CUDA_CHECK(cudaSetDevice(0));
-    dim3 grid = output_grid(m, n, launch);
+    dim3 grid = output_grid(m, n, k, launch);
     context->m = m; context->n = n; context->k = k;
     context->gx = grid.x; context->gy = grid.y;
     context->c_bytes = bytes_for(m*n);

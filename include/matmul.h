@@ -51,10 +51,17 @@ void matmul_cuda_tiled(size_t m, size_t n, size_t k,
                        const float *a, const float *b, float *c);
 void matmul_cuda_register_tiled(size_t m, size_t n, size_t k,
                                 const float *a, const float *b, float *c);
-void matmul_cuda_coalesced(size_t m, size_t n, size_t k,
+void matmul_cuda_prefetch(size_t m, size_t n, size_t k,
                            const float *a, const float *b, float *c);
+void matmul_cuda_combined(size_t m, size_t n, size_t k, const float *a, const float *b, float *c);
 bool matmul_cuda_available(void);
 const char *matmul_cuda_device_name(void);
+/* Optional CUDA library reference; same host-array contract. */
+void matmul_cublas(size_t m, size_t n, size_t k,
+                    const float *a, const float *b, float *c);
+#ifdef MATMUL_HAVE_CUBLAS
+int matmul_cublas_version(void);
+#endif
 /* Optional OpenBLAS comparison; library metadata is for the runner only. */
 void matmul_openblas(size_t m, size_t n, size_t k,
                       const float *a, const float *b, float *c);

@@ -18,9 +18,11 @@ organizes the concepts; it is not a ranking of performance for every workload.
 | 11 | [GPU execution](11-gpu-execution.md) | Grids, blocks, ownership, transfers and synchronization |
 | 12 | [GPU tiling](12-gpu-tiling.md) | Shared-memory reuse, padding and block barriers |
 | 13 | [GPU register tiling](13-gpu-register-tiling.md) | Per-thread output groups, reuse and register pressure |
-| 14 | [GPU memory layout](14-gpu-memory-layout.md) | Coalescing, shared-memory banks and ownership mapping |
+| 14 | [GPU software prefetching](14-gpu-prefetch.md) | Register staging, latency hiding and synchronization |
+| 15 | [Combined GPU optimization](15-gpu-combination.md) | Warp-aligned reuse, prefetch pipelines and dimension-based selection |
+| 16 | [GPU BLAS](16-gpu-blas.md) | Library precision, layout adaptation and device-resident comparisons |
 
-Further topics include GPU library comparisons, alternative algorithms and precision, and
+Further topics include Tensor Core execution, alternative algorithms and precision, and
 language interoperability. Transposition is another way to explore locality.
 
 Performance depends on algorithm, memory access, compiler and hardware.

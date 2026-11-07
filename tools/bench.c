@@ -321,6 +321,14 @@ int main(int argc, char **argv) {
                 "clock=host includes=allocation,H2D,output-poison,kernel,synchronization,D2H,free");
     }
 #endif
+/* Library metadata belongs outside validation and timing windows. */
+#ifdef MATMUL_HAVE_CUBLAS
+    if (strcmp(selected, "cublas") == 0 || strcmp(selected, "all") == 0) {
+        if (matmul_cuda_available())
+            fprintf(metadata, "cublas version=%d math=FP32_PEDANTIC handle=reused stream=0\n",
+                    matmul_cublas_version());
+    }
+#endif
     if (csv) puts("implementation,compiler,build,m,n,k,seed,repeats,warmup,batch,"
                   "min_ms,median_ms,max_ms,gflops,checksum,timing");
     bool ok = true;

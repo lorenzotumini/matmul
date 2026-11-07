@@ -158,3 +158,20 @@ internal Samply profile/validation mode.
 
 CUDA event semantics and approximate timer resolution are documented in the
 [CUDA runtime event API](https://docs.nvidia.com/cuda/archive/12.4.0/cuda-runtime-api/group__CUDART__EVENT.html).
+
+## cuBLAS reference
+
+`cublas` uses `cublasSgemm` with alpha=1, beta=0 and explicit
+`CUBLAS_PEDANTIC_MATH` for the float32 baseline. Metadata includes the library
+version and precision mode. A per-thread handle on device 0 is initialized
+before sampling and reused, including its library-managed workspace. Initial
+validation and warmup exclude first-call library setup from reported results.
+
+Full-call measurements include the same device allocation, copies, NaN
+poisoning, completion and cleanup as the custom CUDA wrappers. CUDA-event
+measurements reuse prepared device buffers and cover the complete library
+operation, including any internal GPU preparation or multiple launches.
+Handle creation, host transfers, validation and cleanup are outside that
+interval. No library-selected internal kernel is singled out for free timing.
+Dimension values must fit the SGEMM int interface; unsupported sizes fail with
+diagnostics rather than silently substituting a CPU implementation.
