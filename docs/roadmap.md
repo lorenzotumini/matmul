@@ -21,6 +21,7 @@ organizes the concepts; it is not a ranking of performance for every workload.
 | 14 | [GPU software prefetching](14-gpu-prefetch.md) | Register staging, latency hiding and synchronization |
 | 15 | [Combined GPU optimization](15-gpu-combination.md) | Warp-aligned reuse, prefetch pipelines and dimension-based selection |
 | 16 | [GPU BLAS](16-gpu-blas.md) | Library precision, layout adaptation and device-resident comparisons |
+| 17 | [OpenCL and integrated GPUs](17-opencl.md) | Device selection, runtime compilation, shared RAM and event timing |
 
 Further topics include Tensor Core execution, alternative algorithms and precision, and
 language interoperability. Transposition is another way to explore locality.

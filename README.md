@@ -26,6 +26,7 @@ and measuring it against earlier versions.
 14. [GPU software prefetching](docs/14-gpu-prefetch.md): staging future inputs in registers, latency hiding and barriers.
 15. [Combining GPU optimizations](docs/15-gpu-combination.md): hierarchical reuse, software prefetch and dimension-based selection.
 16. [Comparing with GPU BLAS](docs/16-gpu-blas.md): cuBLAS, precision modes and measurement boundaries.
+17. [OpenCL and integrated GPUs](docs/17-opencl.md): work-items, runtime compilation, shared RAM and device timing.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -111,7 +112,7 @@ coalescing and shared-memory banks.
 ### CUDA timing
 
 The default `--timing both` reports full-call milliseconds for every backend,
-then adds a separate kernel-time row for each CUDA implementation:
+then adds a separate kernel-time row for each GPU implementation:
 
 ```powershell
 .\nob.exe bench --cuda -- --impl cuda_naive --m 512 --n 512 --k 512
@@ -125,7 +126,7 @@ labeled effective GFLOP/s. GPU full-call rows show no GFLOP/s; CUDA-event rows
 show kernel GFLOP/s as a diagnostic of device-resident computation.
 
 Use `--timing host` for full-call results only, or `--timing kernel` for only
-the CUDA-event measurement. The kernel-only option requires one named CUDA
+the device-event measurement. The kernel-only option requires one named GPU
 implementation; it rejects `--impl all`, CPU implementations and internal
 profile/validation modes. Default `both` works with `--impl all`. Inputs
 are copied to device buffers once and reused for validation, warmups and samples.
@@ -141,7 +142,7 @@ launches can still affect this interval; do not interpret it as an exact
 instruction-level kernel duration. These are warm, reused-buffer measurements.
 
 Human rows label `full-call` or `kernel`. CSV has a `timing` column after
-`checksum`, containing `host` or `kernel`; default CUDA runs produce two rows.
+`checksum`, containing `host` or `kernel`; default GPU runs produce two rows.
 The `gflops` field is empty for GPU host rows, numeric for CPU effective
 throughput and GPU kernel throughput. Metadata stays on stderr. Keep those
 throughput scopes separate. The two GPU rows are separate experiments, so
@@ -203,6 +204,48 @@ awkward shapes can still favor another kernel or library algorithm.
 .\nob.exe bench --cuda -- --impl cuda_combined --m 512 --n 512 --k 512
 .\nob.exe bench --cuda -- --impl cublas --m 512 --n 512 --k 512
 ```
+
+## Intel GPU OpenCL exercise
+
+Follow the [naive OpenCL exercise](docs/opencl-exercise.md) and complete
+[`src/opencl_naive.cl`](src/opencl_naive.cl). Host plumbing is already supplied.
+The registry places `opencl_naive` after the CUDA/cuBLAS backends. It selects
+the first available Intel GPU with a compiler, never a CPU OpenCL device or
+the NVIDIA GPU. A missing Intel GPU is skipped; incorrect output is a failure.
+
+```powershell
+.\nob.exe bench --opencl -- --list
+.\nob.exe test --opencl --filter opencl
+# After completing the exercise and passing correctness:
+.\nob.exe bench --opencl -- --impl opencl_naive --m 256 --n 256 --k 256
+```
+
+`--opencl` enables a separate build, normally with GCC. It requires OpenCL
+1.2 or newer development headers/import library plus the Intel graphics
+driver's OpenCL runtime. CMake can discover the vendor-neutral OpenCL SDK
+files in an installed CUDA toolkit; using those headers does not select the
+NVIDIA device. Without that SDK, install an OpenCL SDK and configure CMake's
+`OpenCL_INCLUDE_DIR` and `OpenCL_LIBRARY` if discovery needs help. No SYCL
+compiler or CUDA compiler is needed for this backend.
+
+The `.cl` source is read from the checkout and compiled by the Intel driver
+at first use. Compilation/context initialization are excluded from steady-state
+samples. Full calls include fresh buffers, explicit input copies, NaN poisoning,
+execution, completion, output copy and release. Physical shared RAM does not
+grant free zero-copy buffers in this first version.
+
+Default `both` timing gives full-call ms and a separate kernel row. OpenCL
+uses the first kernel event's START through the last kernel event's END on
+an in-order profiling queue, divided by batch. Copies/fill/readback are
+outside that window; gaps between kernels remain inside. This differs from
+CUDA's enclosing event markers, especially for tiny launches. Metadata records
+the timing scope, device, driver and reported unified-memory property. CSV
+keeps the existing schema; OpenCL full-call GFLOP/s is blank like CUDA's.
+
+`nob test --cuda --opencl` includes both backends in a separate combined
+build. Until the OpenCL TODOs are complete, its two exercise checks should
+fail; CPU/CUDA checks remain independent. `nob profile` is for CPU captures
+and rejects either GPU opt-in flag. CLBlast will be a later reference.
 
 ## OpenMP thread settings
 

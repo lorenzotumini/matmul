@@ -118,13 +118,15 @@ Device errors terminate
 with diagnostics because the shared void-returning interface cannot carry an
 error code. Missing hardware is detected before invoking the backend.
 
-## CUDA event measurements
+## GPU event measurements
 
 The default `--timing both` measures full calls for all backends and adds a
-separate CUDA-event measurement for each available CUDA backend, including
+separate device-event measurement for each available CUDA/OpenCL backend, including
 when `--impl all` is selected. CPU backends have only the full-call row. Use
 `--timing host` to request only full-call measurements or `--timing kernel`
-to request only CUDA events for one named CUDA implementation.
+to request only device events for one named GPU implementation.
+
+### CUDA
 
 CUDA-event measurements use reusable device buffers. Allocation, one-time
 input copies and event creation happen
@@ -175,3 +177,35 @@ Handle creation, host transfers, validation and cleanup are outside that
 interval. No library-selected internal kernel is singled out for free timing.
 Dimension values must fit the SGEMM int interface; unsupported sizes fail with
 diagnostics rather than silently substituting a CPU implementation.
+
+## OpenCL exercise and measurements
+
+OpenCL explicitly targets the first available Intel GPU with a compiler.
+There is no CPU or other-vendor fallback. Missing hardware skips its CTest
+checks; build errors and incorrect output fail. Its unfinished exercise uses
+the same float32 row-major contract, oracle and NaN poisoning as other kernels.
+M/N zero returns immediately and K zero is filled on the host.
+
+The runtime context, in-order profiling queue, program and kernel are cached
+per process and used from one host thread. Source is read from the checkout
+and compiled as OpenCL C 1.2 at first validation, outside steady-state timings.
+Compilation errors print the driver's build log. Full calls allocate fresh
+buffers, explicitly copy A/B, poison C, launch, wait, read C and release buffers.
+Shared physical RAM does not imply zero-copy allocation or free synchronization.
+
+Prepared timings copy A/B once. Each sample fills C with NaNs, enqueues a
+positive batch, waits for its last kernel event, then measures first kernel
+START to last kernel END, divided by batch. No copies or fill are inside that
+interval; scheduling/host-enqueue gaps between kernels are included. OpenCL
+event timestamps use nanoseconds. Unlike CUDA's enclosing event markers,
+this starts at execution of the first kernel; single-launch scheduling before
+execution is excluded. These are comparable device-resident diagnostics with
+different timestamp boundaries, not identical instruction-level measurements.
+
+The prepared path is validated separately, with readback/checks outside sampling.
+The same human/CSV host and kernel labels apply, with blank host GFLOP/s for
+OpenCL. Metadata identifies device/driver, compilation flags and clock scope.
+Use full-call milliseconds for a common host-array comparison. The OpenCL
+timing test checks that prepared inputs survive host mutation and that repeated
+samples/batches still overwrite output correctly; it fails until the exercise
+is implemented.

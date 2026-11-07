@@ -25,6 +25,7 @@ static void usage(void) {
          "                 profile on Windows defaults to clang-cl for PDBs)\n"
          "  --mode NAME    debug, release, profile (optimized with symbols)\n"
          "  --cuda         Include the CUDA exercise (Windows defaults to clang-cl)\n"
+         "  --opencl       Include the Intel GPU OpenCL exercise\n"
          "  --filter REGEX Run matching CTest names (test only)\n"
          "  -j, --jobs N   Parallel build jobs (default: build tool's choice)\n"
          "  --output FILE  Capture path (profile only; default: unique results/ file)\n"
@@ -161,7 +162,7 @@ int main(int argc, char **argv) {
 
     const char *action = NULL, *cc = NULL, *mode = NULL;
     const char *filter = NULL, *jobs = NULL, *output = NULL;
-    bool open_viewer = false, cuda = false;
+    bool open_viewer = false, cuda = false, opencl = false;
     int forwarded = argc;
     for (int i = 1; i < argc; ++i) {
         const char *arg = argv[i];
@@ -172,6 +173,7 @@ int main(int argc, char **argv) {
         }
         if (strcmp(arg, "--open") == 0) { open_viewer = true; continue; }
         if (strcmp(arg, "--cuda") == 0) { cuda = true; continue; }
+        if (strcmp(arg, "--opencl") == 0) { opencl = true; continue; }
         if (strcmp(arg, "--verbose") == 0) continue;
         const char **value = NULL;
         if (strcmp(arg, "--cc") == 0) value = &cc;
@@ -221,8 +223,8 @@ int main(int argc, char **argv) {
         nob_log(NOB_ERROR, "Invalid compiler, mode or options for %s. Use --help", action);
         return 1;
     }
-    if (cuda && profiling) {
-        nob_log(NOB_ERROR, "nob profile captures CPU execution. Use test/bench --cuda for this exercise; GPU profiling comes later.");
+    if ((cuda || opencl) && profiling) {
+        nob_log(NOB_ERROR, "nob profile captures CPU execution. Use test/bench --cuda or --opencl for GPU work.");
         return 1;
     }
 #ifdef _WIN32
@@ -262,20 +264,22 @@ int main(int argc, char **argv) {
         }
     }
 
-    const char *directory = nob_temp_sprintf("build/%s/%s%s", cc, cuda ? "cuda-" : "", mode);
+    const char *directory = nob_temp_sprintf("build/%s/%s%s%s", cc,
+                                            cuda ? "cuda-" : "", opencl ? "opencl-" : "", mode);
     log_directory = nob_temp_sprintf("%s/logs", directory);
     if (!nob_mkdir_if_not_exists("build") ||
         !nob_mkdir_if_not_exists(nob_temp_sprintf("build/%s", cc)) ||
         !nob_mkdir_if_not_exists(directory) ||
         !nob_mkdir_if_not_exists(log_directory)) return 1;
-    fprintf(stderr, "[build] %s / %s%s\n", cc, mode, cuda ? " / CUDA" : "");
+    fprintf(stderr, "[build] %s / %s%s%s\n", cc, mode, cuda ? " / CUDA" : "", opencl ? " / OpenCL" : "");
     const char *compiler = strcmp(cc, "msvc") == 0 ? "cl" : cc;
     Nob_Cmd cmd = {0};
     nob_cmd_append(&cmd, "cmake", "-S", ".", "-B", directory, "-G", "Ninja",
                    nob_temp_sprintf("-DCMAKE_C_COMPILER=%s", compiler),
                    nob_temp_sprintf("-DCMAKE_BUILD_TYPE=%s", configuration),
                    "-DBUILD_TESTING=ON",
-                   cuda ? "-DMATMUL_ENABLE_CUDA=ON" : "-DMATMUL_ENABLE_CUDA=OFF");
+                   cuda ? "-DMATMUL_ENABLE_CUDA=ON" : "-DMATMUL_ENABLE_CUDA=OFF",
+                   opencl ? "-DMATMUL_ENABLE_OPENCL=ON" : "-DMATMUL_ENABLE_OPENCL=OFF");
     if (!run_setup(&cmd, "configure")) return 1;
     nob_cmd_append(&cmd, "cmake", "--build", directory, "--parallel");
     if (jobs) nob_cmd_append(&cmd, jobs);

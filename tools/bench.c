@@ -1,6 +1,10 @@
 #include "lab.h"
+#include "gpu_bench.h"
 #ifdef MATMUL_HAVE_CUDA
 #include "cuda_bench.h"
+#endif
+#ifdef MATMUL_HAVE_OPENCL
+#include "opencl_bench.h"
 #endif
 
 #include <float.h>
@@ -18,8 +22,8 @@ static void usage(void) {
          "  --repeats R            Measured samples (default: 7)\n"
          "  --warmup W             Untimed calls (default: 2)\n"
          "  --batch B              Calls per measured sample (default: 1)\n"
-         "  --timing MODE          both (default), host, or kernel (one CUDA --impl)\n"
-         "                         both: full-call time, plus CUDA kernel diagnostics\n"
+         "  --timing MODE          both (default), host, or kernel (one GPU --impl)\n"
+         "                         both: full-call time, plus GPU kernel diagnostics\n"
          "  --seed S               uint32 input seed (default: 42)\n"
          "  --csv                  Write CSV to stdout; metadata to stderr\n"
          "  --help                 Show this help\n"
@@ -47,13 +51,8 @@ static int compare_double(const void *a, const void *b) {
     return (x > y) - (x < y);
 }
 
-static bool cuda_implementation(const MatmulImplementation *impl) {
-#ifdef MATMUL_HAVE_CUDA
-    return matmul_cuda_kernel_timing_supported(impl->run);
-#else
-    (void)impl;
-    return false;
-#endif
+static bool gpu_implementation(const MatmulImplementation *impl) {
+    return lab_gpu_kernel_timing_supported(impl->run);
 }
 
 static bool profile(const MatmulImplementation *impl, LabProblem *p,
@@ -100,43 +99,37 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
         fprintf(stderr, "Cannot allocate timing samples.\n");
         return false;
     }
-#ifdef MATMUL_HAVE_CUDA
-    MatmulCudaBenchmark *device = NULL;
+    LabGpuBenchmark *device = NULL;
     if (kernel_timing) {
-        device = matmul_cuda_benchmark_create(impl->run, p->m, p->n, p->k, p->a, p->b);
+        device = lab_gpu_benchmark_create(impl->run, p->m, p->n, p->k, p->a, p->b);
         if (!device) {
-            fprintf(stderr, "Cannot prepare CUDA kernel benchmark.\n");
+            fprintf(stderr, "Cannot prepare GPU kernel benchmark.\n");
             free(samples);
             return false;
         }
         /* Validate this distinct, prepared-buffer path before reporting times. */
-        (void)matmul_cuda_benchmark_sample(device, 1);
+        (void)lab_gpu_benchmark_sample(device, 1);
         lab_poison(p);
-        matmul_cuda_benchmark_read(device, p->c);
+        lab_gpu_benchmark_read(device, p->c);
         if (!lab_check(p, impl->name)) {
-            fprintf(stderr, "No performance result: prepared CUDA output is incorrect.\n");
-            matmul_cuda_benchmark_destroy(device);
+            fprintf(stderr, "No performance result: prepared GPU output is incorrect.\n");
+            lab_gpu_benchmark_destroy(device);
             free(samples);
             return false;
         }
     }
-#endif
     for (size_t i = 0; i < warmup; ++i) {
-#ifdef MATMUL_HAVE_CUDA
         if (device) {
-            (void)matmul_cuda_benchmark_sample(device, 1);
+            (void)lab_gpu_benchmark_sample(device, 1);
             continue;
         }
-#endif
         impl->run(p->m, p->n, p->k, p->a, p->b, p->c);
     }
     for (size_t i = 0; i < repeats; ++i) {
-#ifdef MATMUL_HAVE_CUDA
         if (device) {
-            samples[i] = matmul_cuda_benchmark_sample(device, batch);
-            matmul_cuda_benchmark_read(device, p->c);
+            samples[i] = lab_gpu_benchmark_sample(device, batch);
+            lab_gpu_benchmark_read(device, p->c);
         } else
-#endif
         {
             double start = lab_seconds();
             for (size_t j = 0; j < batch; ++j) {
@@ -147,9 +140,7 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
         /* Validation, the oracle, and allocation are outside the timer. */
         if (!isfinite(samples[i]) || samples[i] <= 0.0 || !lab_check(p, impl->name)) {
             fprintf(stderr, "Invalid sample (for tiny matrices, increase --batch).\n");
-#ifdef MATMUL_HAVE_CUDA
-            matmul_cuda_benchmark_destroy(device);
-#endif
+            lab_gpu_benchmark_destroy(device);
             free(samples);
             return false;
         }
@@ -164,9 +155,9 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
     const char *timing = kernel_timing ? "kernel" : "host";
     /* CPU throughput includes packing/team coordination. GPU full-call
      * latency includes transfers; publish its arithmetic throughput only
-     * from the separate CUDA-event measurement.
+     * from the separate device-event measurement.
      */
-    bool show_gflops = kernel_timing || !cuda_implementation(impl);
+    bool show_gflops = kernel_timing || !gpu_implementation(impl);
     if (csv) {
         printf("%s,%s,%s,%zu,%zu,%zu,%" PRIu32 ",%zu,%zu,%zu,%.9g,%.9g,%.9g,",
                impl->name, LAB_COMPILER, LAB_BUILD, p->m, p->n, p->k, seed,
@@ -182,9 +173,7 @@ static bool measure(const MatmulImplementation *impl, LabProblem *p,
             printf("; %.3f %s GFLOP/s", gflops, kernel_timing ? "kernel" : "effective");
         printf("; checksum %.9g\n", checksum);
     }
-#ifdef MATMUL_HAVE_CUDA
-    matmul_cuda_benchmark_destroy(device);
-#endif
+    lab_gpu_benchmark_destroy(device);
     free(samples);
     return true;
 }
@@ -267,10 +256,10 @@ int main(int argc, char **argv) {
     }
     if (!found) { fprintf(stderr, "Unknown implementation: %s\n", selected); return 1; }
     if (kernel_timing) {
-        bool supported = requested && cuda_implementation(requested);
+        bool supported = requested && gpu_implementation(requested);
         if (!supported) {
-            fprintf(stderr, "Kernel timing requires a CUDA build and one named CUDA implementation. "
-                            "Use nob bench --cuda -- --impl cuda_tiled --timing kernel.\n");
+            fprintf(stderr, "Kernel timing requires a GPU build and one named GPU implementation. "
+                            "Use --cuda or --opencl with a matching --impl.\n");
             return 1;
         }
     }
@@ -310,7 +299,7 @@ int main(int argc, char **argv) {
     }
 #endif
 #ifdef MATMUL_HAVE_CUDA
-    if ((strcmp(selected, "all") == 0 || (requested && cuda_implementation(requested))) &&
+    if ((strcmp(selected, "all") == 0 || (requested && matmul_cuda_kernel_timing_supported(requested->run))) &&
         matmul_cuda_available()) {
         fprintf(metadata, "cuda device=\"%s\" %s\n", matmul_cuda_device_name(),
                 strcmp(timing, "both") == 0 ?
@@ -322,6 +311,18 @@ int main(int argc, char **argv) {
     }
 #endif
 /* Library metadata belongs outside validation and timing windows. */
+#ifdef MATMUL_HAVE_OPENCL
+    if ((strcmp(selected, "all") == 0 || (requested && matmul_opencl_kernel_timing_supported(requested->run))) &&
+        matmul_opencl_available()) {
+        fprintf(metadata, "opencl device=\"%s\" driver=\"%s\" selection=Intel-GPU "
+                "build-options=-cl-std=CL1.2 full-call-clock=host "
+                "kernel-clock=OpenCL-first-START-to-last-END kernel-data=device-resident "
+                "full-call-includes=buffer-allocation,copies,output-poison,kernel,wait,readback,release "
+                "host-unified-memory=%s zero-copy=not-assumed\n",
+                matmul_opencl_device_name(), matmul_opencl_driver_version(),
+                matmul_opencl_host_unified_memory() ? "yes" : "no");
+    }
+#endif
 #ifdef MATMUL_HAVE_CUBLAS
     if (strcmp(selected, "cublas") == 0 || strcmp(selected, "all") == 0) {
         if (matmul_cuda_available())
@@ -351,7 +352,7 @@ int main(int argc, char **argv) {
             } else {
                 passed = measure(&impls[i], &p, repeats, warmup, batch,
                                  (uint32_t)seed, csv, name_width, kernel_timing);
-                if (passed && strcmp(timing, "both") == 0 && cuda_implementation(&impls[i]))
+                if (passed && strcmp(timing, "both") == 0 && gpu_implementation(&impls[i]))
                     passed = measure(&impls[i], &p, repeats, warmup, batch,
                                      (uint32_t)seed, csv, name_width, true);
             }

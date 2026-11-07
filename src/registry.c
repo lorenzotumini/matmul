@@ -49,6 +49,9 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
 #ifdef MATMUL_HAVE_CUBLAS
         {"cublas", matmul_cublas, "cuBLAS SGEMM, FP32 pedantic, alpha=1 beta=0", matmul_cuda_available},
 #endif
+#ifdef MATMUL_HAVE_OPENCL
+        {"opencl_naive", matmul_opencl_naive, "OpenCL exercise: one output per work-item on Intel GPU", matmul_opencl_available},
+#endif
     };
     *count = sizeof implementations / sizeof implementations[0];
     return implementations;
