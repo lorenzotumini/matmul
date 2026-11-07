@@ -47,6 +47,8 @@ void matmul_simd_avx512(size_t m, size_t n, size_t k, const float *a, const floa
 /* Optional CUDA exercise: same host-array contract, including transfer costs. */
 void matmul_cuda_naive(size_t m, size_t n, size_t k,
                        const float *a, const float *b, float *c);
+void matmul_cuda_tiled(size_t m, size_t n, size_t k,
+                       const float *a, const float *b, float *c);
 bool matmul_cuda_available(void);
 const char *matmul_cuda_device_name(void);
 /* Optional OpenBLAS comparison; library metadata is for the runner only. */

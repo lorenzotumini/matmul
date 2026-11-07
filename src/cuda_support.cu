@@ -35,8 +35,10 @@ static size_t bytes_for(size_t elements) {
     return elements * sizeof(float);
 }
 
-void matmul_cuda_naive(size_t m, size_t n, size_t k,
-                        const float *a, const float *b, float *c) {
+/* Both exercises pay for exactly the same host-side preparation and transfers. */
+static void matmul_cuda(size_t m, size_t n, size_t k,
+                         const float *a, const float *b, float *c,
+                         MatmulCudaLaunchFn launch) {
     if (!m || !n) return;
     if (!k) {
         for (size_t i = 0; i < m*n; ++i) c[i] = 0.0f;
@@ -49,7 +51,7 @@ void matmul_cuda_naive(size_t m, size_t n, size_t k,
     /* A block has 16 columns x 16 rows. Round up without overflowing n+15.
      * The student's bounds check must handle the last partial blocks.
      */
-    const dim3 block(16, 16);
+    const dim3 block(CUDA_TILE, CUDA_TILE);
     size_t gx = n / block.x + (n % block.x != 0);
     size_t gy = m / block.y + (m % block.y != 0);
     if (gx > (size_t)device.maxGridSize[0] || gy > (size_t)device.maxGridSize[1]) {
@@ -68,11 +70,21 @@ void matmul_cuda_naive(size_t m, size_t n, size_t k,
      * This diagnostic initialization is also included in host-call timings.
      */
     CUDA_CHECK(cudaMemset(dc, 0xff, c_bytes));
-    matmul_cuda_naive_launch(grid, block, m, n, k, da, db, dc);
+    launch(grid, block, m, n, k, da, db, dc);
     CUDA_CHECK(cudaGetLastError());       /* Launch configuration / binary errors. */
     CUDA_CHECK(cudaDeviceSynchronize());  /* Wait; report errors from GPU execution. */
     CUDA_CHECK(cudaMemcpy(c, dc, c_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaFree(dc));
     CUDA_CHECK(cudaFree(db));
     CUDA_CHECK(cudaFree(da));
+}
+
+void matmul_cuda_naive(size_t m, size_t n, size_t k,
+                        const float *a, const float *b, float *c) {
+    matmul_cuda(m, n, k, a, b, c, matmul_cuda_naive_launch);
+}
+
+void matmul_cuda_tiled(size_t m, size_t n, size_t k,
+                        const float *a, const float *b, float *c) {
+    matmul_cuda(m, n, k, a, b, c, matmul_cuda_tiled_launch);
 }

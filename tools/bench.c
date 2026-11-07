@@ -219,7 +219,8 @@ int main(int argc, char **argv) {
     }
 #endif
 #ifdef MATMUL_HAVE_CUDA
-    if ((strcmp(selected, "cuda_naive") == 0 || strcmp(selected, "all") == 0) &&
+    if ((strcmp(selected, "cuda_naive") == 0 || strcmp(selected, "cuda_tiled") == 0 ||
+         strcmp(selected, "all") == 0) &&
         matmul_cuda_available()) {
         fprintf(metadata, "cuda device=\"%s\" timing=host-call "
                           "includes=allocation,H2D,output-poison,kernel,synchronization,D2H,free\n",

@@ -155,16 +155,22 @@ static bool kernel(const MatmulImplementation *impl) {
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--harness") == 0)
         return harness() ? 0 : 1;
-    const char *only = NULL, *skip = NULL;
-    if (argc == 3 && strcmp(argv[1], "--impl") == 0) only = argv[2];
-    else if (argc == 3 && strcmp(argv[1], "--skip") == 0) skip = argv[2];
-    else if (argc != 1) return 1;
+    const char *only = NULL;
+    for (int arg = 1; arg < argc; arg += 2) {
+        if (arg + 1 >= argc) return 1;
+        if (strcmp(argv[arg], "--impl") == 0 && !only) only = argv[arg + 1];
+        else if (strcmp(argv[arg], "--skip") != 0) return 1;
+    }
     size_t count;
     const MatmulImplementation *impls = matmul_implementations(&count);
     bool ok = true;
     bool found = only == NULL;
     for (size_t i = 0; i < count; ++i) {
-        if (skip && strcmp(skip, impls[i].name) == 0) continue;
+        bool skipped = false;
+        for (int arg = 1; arg < argc; arg += 2)
+            if (strcmp(argv[arg], "--skip") == 0 &&
+                strcmp(argv[arg + 1], impls[i].name) == 0) skipped = true;
+        if (skipped) continue;
         if (only && strcmp(only, impls[i].name) != 0) continue;
         found = true;
         if (!matmul_implementation_available(&impls[i])) {

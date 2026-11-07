@@ -4,10 +4,17 @@
 #include <cuda_runtime.h>
 #include <stddef.h>
 
+enum { CUDA_TILE = 16 }; /* Must match the shared-memory exercise's block shape. */
+
+typedef void (*MatmulCudaLaunchFn)(dim3 grid, dim3 block, size_t m, size_t n, size_t k,
+                                    const float *a, const float *b, float *c);
+
 /* Private bridge: host buffers are handled in cuda_support.cu; this launches
  * the student's kernel on device buffers, asynchronously on the default stream.
  */
 void matmul_cuda_naive_launch(dim3 grid, dim3 block, size_t m, size_t n, size_t k,
+                              const float *a, const float *b, float *c);
+void matmul_cuda_tiled_launch(dim3 grid, dim3 block, size_t m, size_t n, size_t k,
                               const float *a, const float *b, float *c);
 
 #endif

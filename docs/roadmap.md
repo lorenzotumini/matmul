@@ -16,9 +16,9 @@ organizes the concepts; it is not a ranking of performance for every workload.
 | 09 | [Combined CPU optimization](09-cpu-optimization.md) | Layered reuse and practical tradeoffs |
 | 10 | [BLAS](10-blas.md) | Library interfaces and mature performance references |
 | 11 | [GPU execution](11-gpu-execution.md) | Grids, blocks, ownership, transfers and synchronization |
+| 12 | [GPU tiling](12-gpu-tiling.md) | Shared-memory reuse, padding and block barriers |
 
-Further topics include GPU shared-memory
-tiling, GPU library comparisons, alternative algorithms and precision, and
+Further topics include GPU library comparisons, alternative algorithms and precision, and
 language interoperability. Transposition is another way to explore locality.
 
 Performance depends on algorithm, memory access, compiler and hardware.

@@ -21,6 +21,7 @@ and measuring it against earlier versions.
 9. [Combining CPU optimizations](docs/09-cpu-optimization.md): layered reuse and practical tradeoffs.
 10. [Comparing with BLAS](docs/10-blas.md): library interfaces and fair measurements.
 11. [GPU execution and memory](docs/11-gpu-execution.md): grids, blocks, ownership and transfers.
+12. [GPU shared-memory tiling](docs/12-gpu-tiling.md): cooperative loading, reuse and barriers.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -54,19 +55,23 @@ Arguments before `--` configure Nob; arguments after it configure the test or
 benchmark runner. Use `./nob --help` for build options and
 `./nob bench -- --help` for workload options.
 
-## CUDA exercise
+## CUDA implementations
 
-For the guided CUDA exercise, open [the exercise guide](docs/cuda-exercise.md)
-and complete the TODOs in [`src/cuda_naive.cu`](src/cuda_naive.cu). Start with:
+The GPU exercises use the same correctness tests and host-side memory handling:
+
+- [Naive CUDA](src/cuda_naive.cu): one output per thread.
+- [Shared-memory tiling](docs/12-gpu-tiling.md): cooperative input reuse in
+  [`src/cuda_tiled.cu`](src/cuda_tiled.cu).
 
 ```powershell
-.\nob.exe test --cuda --filter cuda
+.\nob.exe test --cuda --filter cuda_naive
+.\nob.exe test --cuda --filter cuda_tiled
 ```
 
-The template compiles but intentionally fails correctness until completed.
+A filter of `cuda` runs both GPU tests; use the implementation name to focus on one.
 `--cuda` opts into a separate CUDA build and selects clang-cl on Windows;
 ordinary CPU commands keep their defaults. After correctness passes, use
-`nob bench --cuda -- --impl cuda_naive` for complete host-call timings,
+`nob bench --cuda -- --impl cuda_naive` (or `cuda_tiled`) for complete host-call timings,
 including allocation and transfers.
 
 ## OpenMP thread settings

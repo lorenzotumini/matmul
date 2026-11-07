@@ -34,8 +34,11 @@ matrix multiplication kernels manually to understand the basics.
 
 # GPU exercises
 
-- `src/cuda_naive.cu` is an intentionally unfinished guided exercise. Do not
-  fill its TODOs merely to make tests pass. Supplied host plumbing belongs in
+- Preserve the completed `src/cuda_naive.cu` and `src/cuda_tiled.cu` kernels. Use
+  `nob test --cuda --filter cuda_tiled` to focus on it; `--filter cuda_naive`
+  checks the earlier baseline and `--filter cuda` checks both.
+
+- Do not fill exercise TODOs merely to make tests pass. Supplied host plumbing belongs in
   `src/cuda_support.cu`.
 - Use `nob test --cuda --filter cuda` for the CUDA exercise and
   `nob bench --cuda -- --impl cuda_naive` after correctness passes. On Windows,
