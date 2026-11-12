@@ -51,6 +51,7 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
 #endif
 #ifdef MATMUL_HAVE_OPENCL
         {"opencl_naive", matmul_opencl_naive, "OpenCL exercise: one output per work-item on Intel GPU", matmul_opencl_available},
+        {"opencl_tiled", matmul_opencl_tiled, "OpenCL exercise: 16x16 local-memory tiles on Intel GPU", matmul_opencl_available},
 #endif
     };
     *count = sizeof implementations / sizeof implementations[0];

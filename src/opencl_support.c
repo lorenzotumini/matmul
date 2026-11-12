@@ -25,8 +25,8 @@ static struct {
     cl_device_id device;
     cl_context context;
     cl_command_queue queue;
-    cl_program program;
-    cl_kernel kernel;
+    cl_program program[2];
+    cl_kernel kernel[2];
     char name[256], driver[256];
     cl_bool unified_memory;
 } runtime;
@@ -81,21 +81,24 @@ bool matmul_opencl_host_unified_memory(void) {
 }
 
 static void shutdown_runtime(void) {
-    clReleaseKernel(runtime.kernel);
-    clReleaseProgram(runtime.program);
+    for (int i = 0; i < 2; ++i) {
+        if (runtime.kernel[i]) clReleaseKernel(runtime.kernel[i]);
+        if (runtime.program[i]) clReleaseProgram(runtime.program[i]);
+    }
     clReleaseCommandQueue(runtime.queue);
     clReleaseContext(runtime.context);
 }
 
-static void initialize(void) {
-    if (runtime.kernel) return;
+static void initialize(int variant) {
+    if (runtime.kernel[variant]) return;
+    const char *path = variant ? MATMUL_OPENCL_TILED_SOURCE_PATH : MATMUL_OPENCL_SOURCE_PATH;
     if (!matmul_opencl_available()) {
         fprintf(stderr, "OpenCL: no available Intel GPU with a compiler.\n");
         exit(EXIT_FAILURE);
     }
-    FILE *file = fopen(MATMUL_OPENCL_SOURCE_PATH, "rb");
+    FILE *file = fopen(path, "rb");
     if (!file || fseek(file, 0, SEEK_END) != 0) {
-        fprintf(stderr, "Cannot read OpenCL exercise: %s\n", MATMUL_OPENCL_SOURCE_PATH);
+        fprintf(stderr, "Cannot read OpenCL exercise: %s\n", path);
         exit(EXIT_FAILURE);
     }
     long length = ftell(file);
@@ -111,37 +114,42 @@ static void initialize(void) {
     fclose(file);
     source[length] = '\0';
     cl_int error;
-    runtime.context = clCreateContext(NULL, 1, &runtime.device, NULL, NULL, &error);
-    CL_CHECK(error);
-    runtime.queue = clCreateCommandQueue(runtime.context, runtime.device, CL_QUEUE_PROFILING_ENABLE, &error);
-    CL_CHECK(error);
+    if (!runtime.context) {
+        runtime.context = clCreateContext(NULL, 1, &runtime.device, NULL, NULL, &error);
+        CL_CHECK(error);
+        runtime.queue = clCreateCommandQueue(runtime.context, runtime.device, CL_QUEUE_PROFILING_ENABLE, &error);
+        CL_CHECK(error);
+        if (atexit(shutdown_runtime) != 0) {
+            fprintf(stderr, "Cannot register OpenCL cleanup.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
     const char *text = source;
-    runtime.program = clCreateProgramWithSource(runtime.context, 1, &text, NULL, &error);
+    runtime.program[variant] = clCreateProgramWithSource(runtime.context, 1, &text, NULL, &error);
     CL_CHECK(error);
     free(source);
-    error = clBuildProgram(runtime.program, 1, &runtime.device, "-cl-std=CL1.2", NULL, NULL);
+    error = clBuildProgram(runtime.program[variant], 1, &runtime.device, "-cl-std=CL1.2", NULL, NULL);
     if (error != CL_SUCCESS) {
         size_t bytes = 0;
-        CL_CHECK(clGetProgramBuildInfo(runtime.program, runtime.device, CL_PROGRAM_BUILD_LOG, 0, NULL, &bytes));
+        CL_CHECK(clGetProgramBuildInfo(runtime.program[variant], runtime.device, CL_PROGRAM_BUILD_LOG, 0, NULL, &bytes));
         char *log = calloc(bytes + 1, 1);
         if (log) {
-            CL_CHECK(clGetProgramBuildInfo(runtime.program, runtime.device, CL_PROGRAM_BUILD_LOG, bytes, log, NULL));
-            fprintf(stderr, "OpenCL compiler log (%s):\n%s\n", MATMUL_OPENCL_SOURCE_PATH, log);
+            CL_CHECK(clGetProgramBuildInfo(runtime.program[variant], runtime.device, CL_PROGRAM_BUILD_LOG, bytes, log, NULL));
+            fprintf(stderr, "OpenCL compiler log (%s):\n%s\n", path, log);
             free(log);
         }
         CL_CHECK(error);
     }
-    runtime.kernel = clCreateKernel(runtime.program, "matmul_opencl_naive", &error);
+    runtime.kernel[variant] = clCreateKernel(runtime.program[variant], variant ? "matmul_opencl_tiled" : "matmul_opencl_naive", &error);
     CL_CHECK(error);
-    if (atexit(shutdown_runtime) != 0) {
-        fprintf(stderr, "Cannot register OpenCL cleanup.\n");
-        exit(EXIT_FAILURE);
-    }
+
 }
 
 struct MatmulOpenCLBenchmark {
     cl_ulong m, n, k;
-    size_t global[2], c_bytes;
+    size_t global[2], local[2], c_bytes;
+    bool tiled;
+    cl_kernel kernel;
     cl_mem a, b, c;
 };
 
@@ -154,7 +162,7 @@ static size_t bytes_for(size_t count) {
 }
 
 bool matmul_opencl_kernel_timing_supported(MatmulFn implementation) {
-    return implementation == matmul_opencl_naive;
+    return implementation == matmul_opencl_naive || implementation == matmul_opencl_tiled;
 }
 
 MatmulOpenCLBenchmark *matmul_opencl_benchmark_create(MatmulFn implementation,
@@ -162,9 +170,28 @@ MatmulOpenCLBenchmark *matmul_opencl_benchmark_create(MatmulFn implementation,
     if (!matmul_opencl_kernel_timing_supported(implementation) || !m || !n || !k) return NULL;
     MatmulOpenCLBenchmark *device = malloc(sizeof *device);
     if (!device) return NULL;
-    initialize();
+    device->tiled = implementation == matmul_opencl_tiled;
+    initialize(device->tiled ? 1 : 0);
+    device->kernel = runtime.kernel[device->tiled ? 1 : 0];
     device->m = (cl_ulong)m; device->n = (cl_ulong)n; device->k = (cl_ulong)k;
+    device->local[0] = 16; device->local[1] = 16;
     device->global[0] = n; device->global[1] = m;
+    if (device->tiled) {
+        /* ceil(size/16)*16, with overflow checks before rounding. */
+        if (m > SIZE_MAX - 15 || n > SIZE_MAX - 15) {
+            fprintf(stderr, "OpenCL tiled global size overflows size_t.\n");
+            exit(EXIT_FAILURE);
+        }
+        device->global[0] = (n + 15) / 16 * 16;
+        device->global[1] = (m + 15) / 16 * 16;
+        size_t limit;
+        CL_CHECK(clGetKernelWorkGroupInfo(device->kernel, runtime.device,
+            CL_KERNEL_WORK_GROUP_SIZE, sizeof limit, &limit, NULL));
+        if (limit < 256) {
+            fprintf(stderr, "OpenCL tiled kernel requires a 16x16 work-group.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
     device->c_bytes = bytes_for(m*n);
     size_t a_bytes = bytes_for(m*k), b_bytes = bytes_for(k*n);
     cl_int error;
@@ -186,17 +213,17 @@ static void poison(MatmulOpenCLBenchmark *device) {
 }
 
 static void launch(MatmulOpenCLBenchmark *device, cl_event *event) {
-    CL_CHECK(clSetKernelArg(runtime.kernel, 0, sizeof device->m, &device->m));
-    CL_CHECK(clSetKernelArg(runtime.kernel, 1, sizeof device->n, &device->n));
-    CL_CHECK(clSetKernelArg(runtime.kernel, 2, sizeof device->k, &device->k));
-    CL_CHECK(clSetKernelArg(runtime.kernel, 3, sizeof device->a, &device->a));
-    CL_CHECK(clSetKernelArg(runtime.kernel, 4, sizeof device->b, &device->b));
-    CL_CHECK(clSetKernelArg(runtime.kernel, 5, sizeof device->c, &device->c));
-    /* Global counts are individual work-items, not CUDA block counts. Let the
-     * driver choose work-group sizes; tiling will introduce an explicit size.
+    CL_CHECK(clSetKernelArg(device->kernel, 0, sizeof device->m, &device->m));
+    CL_CHECK(clSetKernelArg(device->kernel, 1, sizeof device->n, &device->n));
+    CL_CHECK(clSetKernelArg(device->kernel, 2, sizeof device->k, &device->k));
+    CL_CHECK(clSetKernelArg(device->kernel, 3, sizeof device->a, &device->a));
+    CL_CHECK(clSetKernelArg(device->kernel, 4, sizeof device->b, &device->b));
+    CL_CHECK(clSetKernelArg(device->kernel, 5, sizeof device->c, &device->c));
+    /* Global counts are individual work-items, not CUDA block counts. The naive
+     * path lets the driver choose groups; tiling uses explicit 16x16 groups.
      */
-    CL_CHECK(clEnqueueNDRangeKernel(runtime.queue, runtime.kernel, 2, NULL,
-                                   device->global, NULL, 0, NULL, event));
+    CL_CHECK(clEnqueueNDRangeKernel(runtime.queue, device->kernel, 2, NULL,
+                                   device->global, device->tiled ? device->local : NULL, 0, NULL, event));
 }
 
 double matmul_opencl_benchmark_sample(MatmulOpenCLBenchmark *device, size_t batch) {
@@ -234,18 +261,27 @@ void matmul_opencl_benchmark_destroy(MatmulOpenCLBenchmark *device) {
     free(device);
 }
 
-void matmul_opencl_naive(size_t m, size_t n, size_t k,
+static void matmul_opencl(MatmulFn implementation, size_t m, size_t n, size_t k,
     const float *a, const float *b, float *c) {
     if (!m || !n) return;
     if (!k) {
         for (size_t i = 0; i < m*n; ++i) c[i] = 0.0f;
         return;
     }
-    MatmulOpenCLBenchmark *device = matmul_opencl_benchmark_create(matmul_opencl_naive, m, n, k, a, b);
+    MatmulOpenCLBenchmark *device = matmul_opencl_benchmark_create(implementation, m, n, k, a, b);
     if (!device) { fprintf(stderr, "OpenCL host allocation failed.\n"); exit(EXIT_FAILURE); }
     poison(device);
     launch(device, NULL);
     CL_CHECK(clFinish(runtime.queue));
     matmul_opencl_benchmark_read(device, c);
     matmul_opencl_benchmark_destroy(device);
+}
+
+void matmul_opencl_naive(size_t m, size_t n, size_t k,
+    const float *a, const float *b, float *c) {
+    matmul_opencl(matmul_opencl_naive, m, n, k, a, b, c);
+}
+void matmul_opencl_tiled(size_t m, size_t n, size_t k,
+    const float *a, const float *b, float *c) {
+    matmul_opencl(matmul_opencl_tiled, m, n, k, a, b, c);
 }

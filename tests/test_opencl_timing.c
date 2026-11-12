@@ -4,6 +4,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+static MatmulFn selected = matmul_opencl_naive;
 
 #define REQUIRE(condition) do { \
     if (!(condition)) { \
@@ -17,7 +20,7 @@ static bool prepared_case(size_t m, size_t n, size_t k) {
     REQUIRE(lab_create(&p, m, n, k));
     lab_randomize(&p, 42);
     lab_reference(&p);
-    LabGpuBenchmark *device = lab_gpu_benchmark_create(matmul_opencl_naive,
+    LabGpuBenchmark *device = lab_gpu_benchmark_create(selected,
         m, n, k, p.a, p.b);
     REQUIRE(device != NULL);
     /* The prepared copy must survive host mutation. This checks the common
@@ -44,17 +47,19 @@ static bool prepared_case(size_t m, size_t n, size_t k) {
 static bool checks(void) {
     float dummy = 1;
     REQUIRE(!lab_gpu_kernel_timing_supported(matmul_naive));
-    REQUIRE(lab_gpu_kernel_timing_supported(matmul_opencl_naive));
+    REQUIRE(lab_gpu_kernel_timing_supported(selected));
     REQUIRE(matmul_opencl_benchmark_create(matmul_naive, 1, 1, 1, &dummy, &dummy) == NULL);
-    REQUIRE(matmul_opencl_benchmark_create(matmul_opencl_naive, 0, 1, 1, &dummy, &dummy) == NULL);
-    REQUIRE(matmul_opencl_benchmark_create(matmul_opencl_naive, 1, 1, 0, &dummy, &dummy) == NULL);
+    REQUIRE(matmul_opencl_benchmark_create(selected, 0, 1, 1, &dummy, &dummy) == NULL);
+    REQUIRE(matmul_opencl_benchmark_create(selected, 1, 1, 0, &dummy, &dummy) == NULL);
     lab_gpu_benchmark_destroy(NULL);
     const size_t shapes[][3] = {{1,1,1}, {2,4,3}, {17,31,33}, {33,17,65}, {65,63,129}};
     for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; ++i)
         REQUIRE(prepared_case(shapes[i][0], shapes[i][1], shapes[i][2]));
     return true;
 }
-int main(void) {
+int main(int argc, char **argv) {
+    if (argc == 2 && strcmp(argv[1], "--tiled") == 0) selected = matmul_opencl_tiled;
+    else if (argc != 1) return EXIT_FAILURE;
     if (!matmul_opencl_available()) {
         puts("SKIP OpenCL timing (no available Intel GPU/compiler)");
         return 77;

@@ -27,6 +27,7 @@ and measuring it against earlier versions.
 15. [Combining GPU optimizations](docs/15-gpu-combination.md): hierarchical reuse, software prefetch and dimension-based selection.
 16. [Comparing with GPU BLAS](docs/16-gpu-blas.md): cuBLAS, precision modes and measurement boundaries.
 17. [OpenCL and integrated GPUs](docs/17-opencl.md): work-items, runtime compilation, shared RAM and device timing.
+18. [OpenCL local-memory tiling](docs/18-opencl-tiling.md): work-group reuse, padded ranges and barriers.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -207,17 +208,20 @@ awkward shapes can still favor another kernel or library algorithm.
 
 ## Intel GPU OpenCL exercise
 
-Follow the [naive OpenCL exercise](docs/opencl-exercise.md) and complete
-[`src/opencl_naive.cl`](src/opencl_naive.cl). Host plumbing is already supplied.
-The registry places `opencl_naive` after the CUDA/cuBLAS backends. It selects
+The completed baseline is in [`src/opencl_naive.cl`](src/opencl_naive.cl).
+The next [tiled exercise](docs/opencl-tiled-exercise.md)
+is in [`src/opencl_tiled.cl`](src/opencl_tiled.cl); its TODOs are unfinished.
+Host plumbing is supplied for both. The registry places `opencl_naive` then
+`opencl_tiled` after CUDA/cuBLAS. The runtime selects
 the first available Intel GPU with a compiler, never a CPU OpenCL device or
 the NVIDIA GPU. A missing Intel GPU is skipped; incorrect output is a failure.
 
 ```powershell
 .\nob.exe bench --opencl -- --list
 .\nob.exe test --opencl --filter opencl
+.\nob.exe test --opencl --filter '^opencl_tiled$'
 # After completing the exercise and passing correctness:
-.\nob.exe bench --opencl -- --impl opencl_naive --m 256 --n 256 --k 256
+.\nob.exe bench --opencl -- --impl opencl_tiled --m 256 --n 256 --k 256
 ```
 
 `--opencl` enables a separate build, normally with GCC. It requires OpenCL
@@ -228,8 +232,10 @@ NVIDIA device. Without that SDK, install an OpenCL SDK and configure CMake's
 `OpenCL_INCLUDE_DIR` and `OpenCL_LIBRARY` if discovery needs help. No SYCL
 compiler or CUDA compiler is needed for this backend.
 
-The `.cl` source is read from the checkout and compiled by the Intel driver
-at first use. Compilation/context initialization are excluded from steady-state
+Each `.cl` source is read and compiled independently at first use. The naive
+path uses exact global dimensions and driver-chosen groups; tiling uses rounded
+global dimensions and fixed 16x16 groups in both timing paths.
+Compilation/context initialization are excluded from steady-state
 samples. Full calls include fresh buffers, explicit input copies, NaN poisoning,
 execution, completion, output copy and release. Physical shared RAM does not
 grant free zero-copy buffers in this first version.
@@ -243,8 +249,9 @@ the timing scope, device, driver and reported unified-memory property. CSV
 keeps the existing schema; OpenCL full-call GFLOP/s is blank like CUDA's.
 
 `nob test --cuda --opencl` includes both backends in a separate combined
-build. Until the OpenCL TODOs are complete, its two exercise checks should
-fail; CPU/CUDA checks remain independent. `nob profile` is for CPU captures
+build. Until the tiled TODOs are complete, `opencl_tiled` and
+`opencl_tiled_timing` should fail; naive/CPU/CUDA checks remain independent.
+`opencl_timing` checks the naive prepared path. `nob profile` is for CPU captures
 and rejects either GPU opt-in flag. CLBlast will be a later reference.
 
 ## OpenMP thread settings

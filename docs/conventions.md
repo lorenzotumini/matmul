@@ -182,11 +182,11 @@ diagnostics rather than silently substituting a CPU implementation.
 
 OpenCL explicitly targets the first available Intel GPU with a compiler.
 There is no CPU or other-vendor fallback. Missing hardware skips its CTest
-checks; build errors and incorrect output fail. Its unfinished exercise uses
+checks; build errors and incorrect output fail. The OpenCL backends use
 the same float32 row-major contract, oracle and NaN poisoning as other kernels.
 M/N zero returns immediately and K zero is filled on the host.
 
-The runtime context, in-order profiling queue, program and kernel are cached
+The runtime context, in-order profiling queue, programs and kernels are cached
 per process and used from one host thread. Source is read from the checkout
 and compiled as OpenCL C 1.2 at first validation, outside steady-state timings.
 Compilation errors print the driver's build log. Full calls allocate fresh
@@ -209,3 +209,10 @@ Use full-call milliseconds for a common host-array comparison. The OpenCL
 timing test checks that prepared inputs survive host mutation and that repeated
 samples/batches still overwrite output correctly; it fails until the exercise
 is implemented.
+
+OpenCL sources compile independently at first use. The naive path has exact
+N-by-M global counts and driver-chosen local sizes. The tiled path uses 16x16
+local sizes and global counts rounded up to multiples of 16 in both host and
+prepared launches. Every edge work-item participates in cooperation; loads
+are padded and output stores guarded. The naive prepared test remains separate
+from `opencl_tiled_timing`, which must fail until the tiled exercise is complete.

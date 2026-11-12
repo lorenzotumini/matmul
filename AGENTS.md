@@ -34,13 +34,15 @@ matrix multiplication kernels manually to understand the basics.
 
 # GPU exercises
 
-- `src/opencl_naive.cl` is an intentionally unfinished Intel GPU exercise.
-  Leave its dot-product/store TODOs for the user. Host/runtime plumbing belongs
-  in `src/opencl_support.c`. Use `nob test --opencl --filter opencl` and, after
-  correctness passes, `nob bench --opencl -- --impl opencl_naive`. Missing Intel
-  hardware may skip; never substitute a CPU/NVIDIA result. Both host and
-  prepared-timing checks must fail honestly for incorrect/unwritten output.
-  Keep the numbered OpenCL concept summary separate from the exercise guide.
+- Preserve the completed `src/opencl_naive.cl` baseline. `src/opencl_tiled.cl`
+  is intentionally unfinished; leave its TODOs for the user. Host plumbing
+  belongs in `src/opencl_support.c`. Tiling uses fixed 16x16 work-groups and
+  rounded global ranges in both timing paths. Compile sources independently
+  so tiled edits cannot break naive. Use `nob test --opencl --filter opencl`
+  and, after correctness passes, `nob bench --opencl -- --impl opencl_tiled`.
+  Missing Intel hardware may skip; incorrect/unwritten output must fail.
+  Never substitute CPU/NVIDIA results. Keep concept summaries and exercise
+  instructions separate.
 
 - `src/cuda_combined.cu` is a complete combined reference requested by the
   user. Preserve the earlier learning kernels. Keep its grid selection and

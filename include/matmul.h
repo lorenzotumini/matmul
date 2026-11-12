@@ -59,6 +59,8 @@ const char *matmul_cuda_device_name(void);
 /* Optional OpenCL exercise: first available Intel GPU, no CPU fallback. */
 void matmul_opencl_naive(size_t m, size_t n, size_t k,
                          const float *a, const float *b, float *c);
+void matmul_opencl_tiled(size_t m, size_t n, size_t k,
+                         const float *a, const float *b, float *c);
 bool matmul_opencl_available(void);
 /* Optional CUDA library reference; same host-array contract. */
 void matmul_cublas(size_t m, size_t n, size_t k,

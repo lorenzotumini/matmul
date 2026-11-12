@@ -8,4 +8,4 @@ It did not establish a consistent speedup on the MX330.
 This source is excluded from CMake, the registry, tests and benchmarks.
 Its private header is in `src/`. Restoring it as a runnable backend also
 requires its host wrapper, grid mapping and prepared-timing registration.
-See [GPU memory access layout](../docs/gpu-memory-layout.md) for the concepts.
+See [GPU memory access layout](../archive/gpu-memory-layout.md) for the concepts.
