@@ -316,10 +316,13 @@ int main(int argc, char **argv) {
         matmul_opencl_available()) {
         fprintf(metadata, "opencl device=\"%s\" driver=\"%s\" selection=Intel-GPU "
                 "build-options=-cl-std=CL1.2 full-call-clock=host "
-                "kernel-clock=OpenCL-first-START-to-last-END kernel-data=device-resident "
+                "kernel-clock=%s kernel-data=device-resident "
                 "full-call-includes=buffer-allocation,copies,output-poison,kernel,wait,readback,release "
                 "host-unified-memory=%s zero-copy=not-assumed\n",
                 matmul_opencl_device_name(), matmul_opencl_driver_version(),
+                strcmp(selected, "all") == 0 ? "per-implementation" :
+                strcmp(selected, "clblast") == 0 ? "OpenCL-marker-END-to-marker-END" :
+                "OpenCL-first-START-to-last-END",
                 matmul_opencl_host_unified_memory() ? "yes" : "no");
     }
 #endif
@@ -328,6 +331,15 @@ int main(int argc, char **argv) {
         if (matmul_cuda_available())
             fprintf(metadata, "cublas version=%d math=FP32_PEDANTIC handle=reused stream=0\n",
                     matmul_cublas_version());
+    }
+#endif
+#ifdef MATMUL_HAVE_CLBLAST
+    if (strcmp(selected, "clblast") == 0 || strcmp(selected, "all") == 0) {
+        const char *options = matmul_clblast_build_options();
+        fprintf(metadata, "clblast version=%s arithmetic=SGEMM-float32 tuning=defaults "
+                "alpha=1 beta=0 kernel-clock=OpenCL-marker-END-to-marker-END "
+                "includes=whole-operation,preprocessing,postprocessing,inter-launch-gaps "
+                "effective-build-options=\"%s\"\n", matmul_clblast_version(), options);
     }
 #endif
     if (csv) puts("implementation,compiler,build,m,n,k,seed,repeats,warmup,batch,"

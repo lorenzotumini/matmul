@@ -215,4 +215,31 @@ N-by-M global counts and driver-chosen local sizes. The tiled path uses 16x16
 local sizes and global counts rounded up to multiples of 16 in both host and
 prepared launches. Every edge work-item participates in cooperation; loads
 are padded and output stores guarded. The naive prepared test remains separate
-from `opencl_tiled_timing`, which must fail until the tiled exercise is complete.
+from `opencl_tiled_timing`. Register-tiling checks fail until its exercise is complete.
+
+Register tiling uses 16x16 work-items per 32x32 output tile and depth 16;
+its global counts are ceil(N/32)*16 by ceil(M/32)*16 in both timing paths.
+Each work-item owns adjacent 2x2 outputs; input ownership is separate.
+
+CLBlast uses the same Intel context/queue and buffer lifecycle. SGEMM is
+float32 row-major, alpha=1, beta=0, with default library tuning. No prepacked
+inputs are supplied for free. First-use compilation/cache setup is excluded
+by validation/warmup; per-call internal workspace/preprocessing remains part
+of the operation. Host-array full-call latency includes the usual explicit
+copies, allocation, poison, completion and cleanup. The library's device time
+is first enclosing marker END to last enclosing marker END divided by batch,
+not the event returned by SGEMM (which may cover only its final kernel).
+This includes all internal stages and enqueue gaps; custom kernels keep their
+existing first-START to last-END scope. Metadata records the difference,
+version, default tuning and CLBLAST_BUILD_OPTIONS. No fast-math build option
+is added by the runner. Dimensions and array element counts must fit INT_MAX
+because the library's device kernels use 32-bit indexing. Validate prepared
+and host paths with the same unchanged double oracle/tolerance.
+
+On Intel driver 30.0.100.9864, CLBlast's optional builtin-assume hints cause
+an observed SPIR-V compiler crash. The adapter appends `-D__has_builtin(x)=0`
+to CLBLAST_BUILD_OPTIONS in the current process only, before library startup.
+Other drivers retain builtin detection. This preserves arithmetic/default
+tuning but changes compiler hints; report the effective flags with results.
+The adapter preserves user options and ensures a trailing separator because
+CLBlast 1.7.0 concatenates its additional compiler options directly.

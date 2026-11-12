@@ -1,3 +1,6 @@
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#endif
 #define CL_TARGET_OPENCL_VERSION 120
 #ifdef __APPLE__
 #include <OpenCL/cl.h>
@@ -6,8 +9,13 @@
 #endif
 #include "opencl_bench.h"
 #include <stdint.h>
+#include <limits.h>
+#ifdef MATMUL_HAVE_CLBLAST
+#include <clblast_c.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void checked(cl_int error, const char *operation) {
     if (error != CL_SUCCESS) {
@@ -25,8 +33,8 @@ static struct {
     cl_device_id device;
     cl_context context;
     cl_command_queue queue;
-    cl_program program[2];
-    cl_kernel kernel[2];
+    cl_program program[3];
+    cl_kernel kernel[3];
     char name[256], driver[256];
     cl_bool unified_memory;
 } runtime;
@@ -81,7 +89,7 @@ bool matmul_opencl_host_unified_memory(void) {
 }
 
 static void shutdown_runtime(void) {
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 3; ++i) {
         if (runtime.kernel[i]) clReleaseKernel(runtime.kernel[i]);
         if (runtime.program[i]) clReleaseProgram(runtime.program[i]);
     }
@@ -89,9 +97,29 @@ static void shutdown_runtime(void) {
     clReleaseContext(runtime.context);
 }
 
+static void initialize_runtime(void) {
+    if (!matmul_opencl_available()) {
+        fprintf(stderr, "OpenCL: no available Intel GPU/compiler.\n");
+        exit(EXIT_FAILURE);
+    }
+    cl_int error;
+    if (!runtime.context) {
+        runtime.context = clCreateContext(NULL, 1, &runtime.device, NULL, NULL, &error);
+        CL_CHECK(error);
+        runtime.queue = clCreateCommandQueue(runtime.context, runtime.device, CL_QUEUE_PROFILING_ENABLE, &error);
+        CL_CHECK(error);
+        if (atexit(shutdown_runtime) != 0) {
+            fprintf(stderr, "Cannot register OpenCL cleanup.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
 static void initialize(int variant) {
+    initialize_runtime();
     if (runtime.kernel[variant]) return;
-    const char *path = variant ? MATMUL_OPENCL_TILED_SOURCE_PATH : MATMUL_OPENCL_SOURCE_PATH;
+    const char *path = variant == 2 ? MATMUL_OPENCL_REGISTER_SOURCE_PATH :
+                       variant == 1 ? MATMUL_OPENCL_TILED_SOURCE_PATH : MATMUL_OPENCL_SOURCE_PATH;
     if (!matmul_opencl_available()) {
         fprintf(stderr, "OpenCL: no available Intel GPU with a compiler.\n");
         exit(EXIT_FAILURE);
@@ -114,16 +142,6 @@ static void initialize(int variant) {
     fclose(file);
     source[length] = '\0';
     cl_int error;
-    if (!runtime.context) {
-        runtime.context = clCreateContext(NULL, 1, &runtime.device, NULL, NULL, &error);
-        CL_CHECK(error);
-        runtime.queue = clCreateCommandQueue(runtime.context, runtime.device, CL_QUEUE_PROFILING_ENABLE, &error);
-        CL_CHECK(error);
-        if (atexit(shutdown_runtime) != 0) {
-            fprintf(stderr, "Cannot register OpenCL cleanup.\n");
-            exit(EXIT_FAILURE);
-        }
-    }
     const char *text = source;
     runtime.program[variant] = clCreateProgramWithSource(runtime.context, 1, &text, NULL, &error);
     CL_CHECK(error);
@@ -140,7 +158,7 @@ static void initialize(int variant) {
         }
         CL_CHECK(error);
     }
-    runtime.kernel[variant] = clCreateKernel(runtime.program[variant], variant ? "matmul_opencl_tiled" : "matmul_opencl_naive", &error);
+    runtime.kernel[variant] = clCreateKernel(runtime.program[variant], variant == 2 ? "matmul_opencl_register_tiled" : variant == 1 ? "matmul_opencl_tiled" : "matmul_opencl_naive", &error);
     CL_CHECK(error);
 
 }
@@ -148,7 +166,7 @@ static void initialize(int variant) {
 struct MatmulOpenCLBenchmark {
     cl_ulong m, n, k;
     size_t global[2], local[2], c_bytes;
-    bool tiled;
+    bool tiled, library;
     cl_kernel kernel;
     cl_mem a, b, c;
 };
@@ -162,17 +180,67 @@ static size_t bytes_for(size_t count) {
 }
 
 bool matmul_opencl_kernel_timing_supported(MatmulFn implementation) {
-    return implementation == matmul_opencl_naive || implementation == matmul_opencl_tiled;
+    return implementation == matmul_opencl_naive || implementation == matmul_opencl_tiled ||
+           implementation == matmul_opencl_register_tiled
+#ifdef MATMUL_HAVE_CLBLAST
+           || implementation == matmul_clblast
+#endif
+           ;
 }
+
+#ifdef MATMUL_HAVE_CLBLAST
+const char *matmul_clblast_build_options(void) {
+    static bool prepared;
+    if (!prepared && matmul_opencl_available()) {
+        const char *user = getenv("CLBLAST_BUILD_OPTIONS");
+        /* This old Intel compiler advertises __builtin_assume but crashes in
+         * its SPIR-V writer. Disabling optional hints preserves arithmetic.
+         * CLBlast exposes build options through the PROCESS environment only.
+         */
+        const char *fix = strcmp(runtime.driver, "30.0.100.9864") == 0 ?
+            " -D__has_builtin(x)=0 " : " ";
+        size_t bytes = (user ? strlen(user) : 0) + strlen(fix) + 1;
+        char *options = malloc(bytes);
+        if (!options) { fprintf(stderr, "Cannot prepare CLBlast build options.\n"); exit(EXIT_FAILURE); }
+        snprintf(options, bytes, "%s%s", user ? user : "", fix);
+        /* A trailing space is required by CLBlast 1.7.0's option concatenation. */
+#ifdef _WIN32
+        int error = _putenv_s("CLBLAST_BUILD_OPTIONS", options);
+#else
+        int error = setenv("CLBLAST_BUILD_OPTIONS", options, 1);
+#endif
+        free(options);
+        if (error) { fprintf(stderr, "Cannot set process-local CLBlast build options.\n"); exit(EXIT_FAILURE); }
+        prepared = true;
+    }
+    const char *options = getenv("CLBLAST_BUILD_OPTIONS");
+    return options ? options : "";
+}
+#endif
 
 MatmulOpenCLBenchmark *matmul_opencl_benchmark_create(MatmulFn implementation,
     size_t m, size_t n, size_t k, const float *a, const float *b) {
     if (!matmul_opencl_kernel_timing_supported(implementation) || !m || !n || !k) return NULL;
     MatmulOpenCLBenchmark *device = malloc(sizeof *device);
     if (!device) return NULL;
-    device->tiled = implementation == matmul_opencl_tiled;
-    initialize(device->tiled ? 1 : 0);
-    device->kernel = runtime.kernel[device->tiled ? 1 : 0];
+    device->library = false;
+#ifdef MATMUL_HAVE_CLBLAST
+    device->library = implementation == matmul_clblast;
+    if (device->library) (void)matmul_clblast_build_options();
+#endif
+    int variant = implementation == matmul_opencl_register_tiled ? 2 :
+                  implementation == matmul_opencl_tiled ? 1 : 0;
+    device->tiled = !device->library && variant != 0;
+    initialize_runtime();
+    device->kernel = NULL;
+    if (!device->library) {
+        initialize(variant);
+        device->kernel = runtime.kernel[variant];
+    } else if (m > INT_MAX || n > INT_MAX || k > INT_MAX ||
+               m*n > INT_MAX || m*k > INT_MAX || k*n > INT_MAX) {
+        fprintf(stderr, "CLBlast dimensions/element counts exceed 32-bit kernel indexing.\n");
+        exit(EXIT_FAILURE);
+    }
     device->m = (cl_ulong)m; device->n = (cl_ulong)n; device->k = (cl_ulong)k;
     device->local[0] = 16; device->local[1] = 16;
     device->global[0] = n; device->global[1] = m;
@@ -182,8 +250,12 @@ MatmulOpenCLBenchmark *matmul_opencl_benchmark_create(MatmulFn implementation,
             fprintf(stderr, "OpenCL tiled global size overflows size_t.\n");
             exit(EXIT_FAILURE);
         }
-        device->global[0] = (n + 15) / 16 * 16;
-        device->global[1] = (m + 15) / 16 * 16;
+        size_t output_tile = variant == 2 ? 32 : 16;
+        if (m > SIZE_MAX - (output_tile - 1) || n > SIZE_MAX - (output_tile - 1)) {
+            fprintf(stderr, "OpenCL output grid overflows size_t.\n"); exit(EXIT_FAILURE);
+        }
+        device->global[0] = ((n + output_tile - 1) / output_tile) * 16;
+        device->global[1] = ((m + output_tile - 1) / output_tile) * 16;
         size_t limit;
         CL_CHECK(clGetKernelWorkGroupInfo(device->kernel, runtime.device,
             CL_KERNEL_WORK_GROUP_SIZE, sizeof limit, &limit, NULL));
@@ -213,6 +285,20 @@ static void poison(MatmulOpenCLBenchmark *device) {
 }
 
 static void launch(MatmulOpenCLBenchmark *device, cl_event *event) {
+#ifdef MATMUL_HAVE_CLBLAST
+    if (device->library) {
+        CLBlastStatusCode status = CLBlastSgemm(CLBlastLayoutRowMajor,
+            CLBlastTransposeNo, CLBlastTransposeNo,
+            (size_t)device->m, (size_t)device->n, (size_t)device->k, 1.0f,
+            device->a, 0, (size_t)device->k, device->b, 0, (size_t)device->n,
+            0.0f, device->c, 0, (size_t)device->n, &runtime.queue, event);
+        if (status != CLBlastSuccess) {
+            fprintf(stderr, "CLBlast SGEMM failed (%d).\n", (int)status);
+            exit(EXIT_FAILURE);
+        }
+        return;
+    }
+#endif
     CL_CHECK(clSetKernelArg(device->kernel, 0, sizeof device->m, &device->m));
     CL_CHECK(clSetKernelArg(device->kernel, 1, sizeof device->n, &device->n));
     CL_CHECK(clSetKernelArg(device->kernel, 2, sizeof device->k, &device->k));
@@ -233,15 +319,24 @@ double matmul_opencl_benchmark_sample(MatmulOpenCLBenchmark *device, size_t batc
     }
     poison(device);
     cl_event first = NULL, last = NULL;
-    for (size_t i = 0; i < batch; ++i)
-        launch(device, i == 0 ? &first : i == batch - 1 ? &last : NULL);
-    if (batch == 1) last = first;
+    if (device->library) {
+        /* A returned CLBlast event may describe only its final internal kernel.
+         * Enclose the ENTIRE library operation, including pre/postprocessing.
+         */
+        CL_CHECK(clEnqueueMarkerWithWaitList(runtime.queue, 0, NULL, &first));
+        for (size_t i = 0; i < batch; ++i) launch(device, NULL);
+        CL_CHECK(clEnqueueMarkerWithWaitList(runtime.queue, 0, NULL, &last));
+    } else {
+        for (size_t i = 0; i < batch; ++i)
+            launch(device, i == 0 ? &first : i == batch - 1 ? &last : NULL);
+        if (batch == 1) last = first;
+    }
     CL_CHECK(clWaitForEvents(1, &last));
     cl_ulong start, end;
-    CL_CHECK(clGetEventProfilingInfo(first, CL_PROFILING_COMMAND_START, sizeof start, &start, NULL));
+    CL_CHECK(clGetEventProfilingInfo(first, device->library ? CL_PROFILING_COMMAND_END : CL_PROFILING_COMMAND_START, sizeof start, &start, NULL));
     CL_CHECK(clGetEventProfilingInfo(last, CL_PROFILING_COMMAND_END, sizeof end, &end, NULL));
     CL_CHECK(clReleaseEvent(first));
-    if (batch > 1) CL_CHECK(clReleaseEvent(last));
+    if (last != first) CL_CHECK(clReleaseEvent(last));
     if (end <= start) {
         fprintf(stderr, "OpenCL event duration is not positive; increase --batch.\n");
         exit(EXIT_FAILURE);
@@ -285,3 +380,15 @@ void matmul_opencl_tiled(size_t m, size_t n, size_t k,
     const float *a, const float *b, float *c) {
     matmul_opencl(matmul_opencl_tiled, m, n, k, a, b, c);
 }
+
+void matmul_opencl_register_tiled(size_t m, size_t n, size_t k,
+    const float *a, const float *b, float *c) {
+    matmul_opencl(matmul_opencl_register_tiled, m, n, k, a, b, c);
+}
+#ifdef MATMUL_HAVE_CLBLAST
+void matmul_clblast(size_t m, size_t n, size_t k,
+    const float *a, const float *b, float *c) {
+    matmul_opencl(matmul_clblast, m, n, k, a, b, c);
+}
+const char *matmul_clblast_version(void) { return "1.7.0"; }
+#endif

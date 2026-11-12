@@ -34,15 +34,21 @@ matrix multiplication kernels manually to understand the basics.
 
 # GPU exercises
 
-- Preserve the completed `src/opencl_naive.cl` baseline. `src/opencl_tiled.cl`
-  is intentionally unfinished; leave its TODOs for the user. Host plumbing
-  belongs in `src/opencl_support.c`. Tiling uses fixed 16x16 work-groups and
-  rounded global ranges in both timing paths. Compile sources independently
-  so tiled edits cannot break naive. Use `nob test --opencl --filter opencl`
-  and, after correctness passes, `nob bench --opencl -- --impl opencl_tiled`.
-  Missing Intel hardware may skip; incorrect/unwritten output must fail.
-  Never substitute CPU/NVIDIA results. Keep concept summaries and exercise
-  instructions separate.
+- Preserve completed `src/opencl_naive.cl` and `src/opencl_tiled.cl` baselines.
+  `src/opencl_register_tiled.cl` is intentionally unfinished; leave its TODOs
+  for the user. It uses 16x16 work-items, 32x32 output tiles and depth 16 in
+  both timing paths. Host plumbing belongs in `src/opencl_support.c`.
+  Compile sources independently so exercises cannot break completed kernels.
+  Use `nob test --opencl --filter opencl_register` to focus on the exercise.
+- CLBlast is an optional complete SGEMM reference on the same Intel GPU.
+  Preserve float32 row-major alpha=1/beta=0 and default tuning metadata.
+  Device timings must enclose the complete operation with markers, including
+  any pre/postprocessing; its returned event may cover only the final kernel.
+  Do not put compilation or validation inside samples. Missing Intel hardware
+  may skip; incorrect output must fail. Never substitute CPU/NVIDIA results.
+  Driver 30.0.100.9864 needs the documented process-local builtin-assume
+  workaround; preserve/report its effective flags and keep other drivers
+  unaffected.
 
 - `src/cuda_combined.cu` is a complete combined reference requested by the
   user. Preserve the earlier learning kernels. Keep its grid selection and

@@ -52,6 +52,10 @@ const MatmulImplementation *matmul_implementations(size_t *count) {
 #ifdef MATMUL_HAVE_OPENCL
         {"opencl_naive", matmul_opencl_naive, "OpenCL exercise: one output per work-item on Intel GPU", matmul_opencl_available},
         {"opencl_tiled", matmul_opencl_tiled, "OpenCL exercise: 16x16 local-memory tiles on Intel GPU", matmul_opencl_available},
+        {"opencl_register_tiled", matmul_opencl_register_tiled, "OpenCL exercise: 2x2 per-work-item register tiles; 32x32 output per group", matmul_opencl_available},
+#endif
+#ifdef MATMUL_HAVE_CLBLAST
+        {"clblast", matmul_clblast, "CLBlast SGEMM, float32, alpha=1 beta=0, default tuning", matmul_opencl_available},
 #endif
     };
     *count = sizeof implementations / sizeof implementations[0];

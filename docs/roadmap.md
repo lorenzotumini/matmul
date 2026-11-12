@@ -23,6 +23,8 @@ organizes the concepts; it is not a ranking of performance for every workload.
 | 16 | [GPU BLAS](16-gpu-blas.md) | Library precision, layout adaptation and device-resident comparisons |
 | 17 | [OpenCL and integrated GPUs](17-opencl.md) | Device selection, runtime compilation, shared RAM and event timing |
 | 18 | [OpenCL local-memory tiling](18-opencl-tiling.md) | Work-group reuse, padding and uniform barriers |
+| 19 | [OpenCL register tiling](19-opencl-register-tiling.md) | Per-work-item output groups and register reuse |
+| 20 | [OpenCL BLAS](20-opencl-blas.md) | CLBlast, device tuning and complete operation timing |
 
 Further topics include Tensor Core execution, alternative algorithms and precision, and
 language interoperability. Transposition is another way to explore locality.

@@ -52,13 +52,20 @@ static bool checks(void) {
     REQUIRE(matmul_opencl_benchmark_create(selected, 0, 1, 1, &dummy, &dummy) == NULL);
     REQUIRE(matmul_opencl_benchmark_create(selected, 1, 1, 0, &dummy, &dummy) == NULL);
     lab_gpu_benchmark_destroy(NULL);
-    const size_t shapes[][3] = {{1,1,1}, {2,4,3}, {17,31,33}, {33,17,65}, {65,63,129}};
+    /* The host suite covers singleton/tiny correctness. Device timing uses
+     * enough work to avoid zero-duration timestamps on the Intel driver.
+     */
+    const size_t shapes[][3] = {{16,16,16}, {17,31,33}, {33,17,65}, {65,63,129}, {129,257,259}};
     for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; ++i)
         REQUIRE(prepared_case(shapes[i][0], shapes[i][1], shapes[i][2]));
     return true;
 }
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--tiled") == 0) selected = matmul_opencl_tiled;
+    else if (argc == 2 && strcmp(argv[1], "--register") == 0) selected = matmul_opencl_register_tiled;
+#ifdef MATMUL_HAVE_CLBLAST
+    else if (argc == 2 && strcmp(argv[1], "--clblast") == 0) selected = matmul_clblast;
+#endif
     else if (argc != 1) return EXIT_FAILURE;
     if (!matmul_opencl_available()) {
         puts("SKIP OpenCL timing (no available Intel GPU/compiler)");

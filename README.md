@@ -28,6 +28,8 @@ and measuring it against earlier versions.
 16. [Comparing with GPU BLAS](docs/16-gpu-blas.md): cuBLAS, precision modes and measurement boundaries.
 17. [OpenCL and integrated GPUs](docs/17-opencl.md): work-items, runtime compilation, shared RAM and device timing.
 18. [OpenCL local-memory tiling](docs/18-opencl-tiling.md): work-group reuse, padded ranges and barriers.
+19. [OpenCL register tiling](docs/19-opencl-register-tiling.md): multiple outputs per work-item and private reuse.
+20. [OpenCL BLAS](docs/20-opencl-blas.md): CLBlast, tuning state and whole-operation measurements.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -104,11 +106,6 @@ adjacent outputs per thread. The prefetched version primes the first tile,
 fetches the next one into registers before computing, then publishes it after
 all shared-memory readers finish. Register pressure can offset any benefit.
 The combined backend uses this scheduling idea with its own tile/layout rules.
-
-The earlier ownership-remapping source is preserved in
-[archived experiments](experiments/README.md), outside the build and registry.
-Its [memory-layout summary](docs/gpu-memory-layout.md) remains a reference for
-coalescing and shared-memory banks.
 
 ### CUDA timing
 
@@ -208,18 +205,18 @@ awkward shapes can still favor another kernel or library algorithm.
 
 ## Intel GPU OpenCL exercise
 
-The completed baseline is in [`src/opencl_naive.cl`](src/opencl_naive.cl).
-The next [tiled exercise](docs/opencl-tiled-exercise.md)
-is in [`src/opencl_tiled.cl`](src/opencl_tiled.cl); its TODOs are unfinished.
-Host plumbing is supplied for both. The registry places `opencl_naive` then
-`opencl_tiled` after CUDA/cuBLAS. The runtime selects
+Completed baselines are `src/opencl_naive.cl` and `src/opencl_tiled.cl`.
+The next [register-tiling exercise](docs/opencl-register-exercise.md) is in
+[`src/opencl_register_tiled.cl`](src/opencl_register_tiled.cl), with TODOs for
+the dot products and cooperative loading. Host plumbing is supplied. Registry
+order is naive, tiled, register tiled, then CLBlast. The runtime selects
 the first available Intel GPU with a compiler, never a CPU OpenCL device or
 the NVIDIA GPU. A missing Intel GPU is skipped; incorrect output is a failure.
 
 ```powershell
 .\nob.exe bench --opencl -- --list
 .\nob.exe test --opencl --filter opencl
-.\nob.exe test --opencl --filter '^opencl_tiled$'
+.\nob.exe test --opencl --filter '^opencl_register_tiled$'
 # After completing the exercise and passing correctness:
 .\nob.exe bench --opencl -- --impl opencl_tiled --m 256 --n 256 --k 256
 ```
@@ -229,8 +226,9 @@ the NVIDIA GPU. A missing Intel GPU is skipped; incorrect output is a failure.
 driver's OpenCL runtime. CMake can discover the vendor-neutral OpenCL SDK
 files in an installed CUDA toolkit; using those headers does not select the
 NVIDIA device. Without that SDK, install an OpenCL SDK and configure CMake's
-`OpenCL_INCLUDE_DIR` and `OpenCL_LIBRARY` if discovery needs help. No SYCL
-compiler or CUDA compiler is needed for this backend.
+`OpenCL_INCLUDE_DIR` and `OpenCL_LIBRARY` if discovery needs help. No SYCL or CUDA compiler is needed. CLBlast additionally needs a matching
+C++ compiler; its pinned source is downloaded on first configuration and built
+statically. Ordinary CPU/CUDA-only builds do not fetch or build it.
 
 Each `.cl` source is read and compiled independently at first use. The naive
 path uses exact global dimensions and driver-chosen groups; tiling uses rounded
@@ -249,10 +247,46 @@ the timing scope, device, driver and reported unified-memory property. CSV
 keeps the existing schema; OpenCL full-call GFLOP/s is blank like CUDA's.
 
 `nob test --cuda --opencl` includes both backends in a separate combined
-build. Until the tiled TODOs are complete, `opencl_tiled` and
-`opencl_tiled_timing` should fail; naive/CPU/CUDA checks remain independent.
+build. Until register TODOs are complete, `opencl_register_tiled` and
+`opencl_register_timing` should fail; earlier kernels/library checks remain independent.
 `opencl_timing` checks the naive prepared path. `nob profile` is for CPU captures
-and rejects either GPU opt-in flag. CLBlast will be a later reference.
+and rejects either GPU opt-in flag.
+
+### CLBlast reference
+
+OpenCL builds include pinned CLBlast 1.7.0 by default. It uses the same Intel
+GPU, context, in-order queue, float32 buffers and validator as the exercises.
+SGEMM is row-major, without transposition, alpha=1 and beta=0. Its default
+parameter database is used; no runtime tuning search or reduced precision is
+requested. Metadata reports the version, default tuning and any
+effective `CLBLAST_BUILD_OPTIONS` value. Leave user flags unset for the baseline;
+changing them defines a different experiment. On Intel driver 30.0.100.9864,
+the adapter adds `-D__has_builtin(x)=0` in the current process to avoid a proven
+compiler crash on `llvm.assume`. This disables optional optimization hints,
+preserves float32 arithmetic/default tuning, and is reported in metadata.
+Other drivers keep their normal builtin detection. A trailing option separator
+also works around CLBlast 1.7.0's build-option concatenation.
+
+```powershell
+.\nob.exe test --opencl --filter '^clblast'
+.\nob.exe bench --opencl -- --impl opencl_tiled --m 512 --n 512 --k 512
+.\nob.exe bench --opencl -- --impl clblast --m 512 --n 512 --k 512
+```
+
+Full calls pay for the same buffers, explicit copies, output poisoning,
+completion and readback. CLBlast can perform several internal kernels, so
+its device row uses enclosing OpenCL marker END timestamps across the whole
+SGEMM batch. Internal preparation and gaps are included; initial JIT/cache
+setup occurs during validation/warmup. Custom kernels retain their first-START
+to last-END measurement. Compare full-call ms for host-array workloads and
+keep these device timestamp differences in mind for tiny matrices.
+
+CMake's `MATMUL_ENABLE_CLBLAST=OFF` disables the reference without disabling
+OpenCL. For example, configure the existing build directory with that cache
+option before the next Nob action. Source is pinned by SHA256; builds require
+network access on first configuration. Dimension/element counts must fit
+32-bit library kernel indexing. The optional library uses C++ internally;
+your kernels remain OpenCL C.
 
 ## OpenMP thread settings
 

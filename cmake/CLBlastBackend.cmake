@@ -1,0 +1,27 @@
+option(MATMUL_ENABLE_CLBLAST "Build the optional CLBlast OpenCL SGEMM reference" ON)
+if(NOT MATMUL_ENABLE_CLBLAST)
+    return()
+endif()
+
+# Pinned, hash-checked source; C++ is needed only for this optional library.
+if(MSVC AND NOT DEFINED CMAKE_CXX_COMPILER)
+    set(CMAKE_CXX_COMPILER "${CMAKE_C_COMPILER}" CACHE FILEPATH "C++ compiler")
+endif()
+enable_language(CXX)
+include(FetchContent)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Static optional dependencies" FORCE)
+set(TUNERS OFF CACHE BOOL "CLBlast tuners" FORCE)
+set(TESTS OFF CACHE BOOL "CLBlast upstream tests" FORCE)
+set(CLIENTS OFF CACHE BOOL "CLBlast clients" FORCE)
+set(SAMPLES OFF CACHE BOOL "CLBlast samples" FORCE)
+set(OVERRIDE_MSVC_FLAGS_TO_MT OFF CACHE BOOL "Keep the parent CRT selection" FORCE)
+FetchContent_Declare(matmul_clblast
+    URL https://codeload.github.com/CNugteren/CLBlast/tar.gz/refs/tags/1.7.0
+    URL_HASH SHA256=cac83330a6110214f2b7efc8e46062536f40ba96122f3b2a074a51497d8ca9e7)
+FetchContent_MakeAvailable(matmul_clblast)
+target_link_libraries(matmul_opencl PRIVATE clblast)
+target_compile_definitions(matmul_opencl PRIVATE MATMUL_HAVE_CLBLAST=1)
+target_compile_definitions(matmul PUBLIC MATMUL_HAVE_CLBLAST=1)
