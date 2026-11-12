@@ -24,7 +24,8 @@ organizes the concepts; it is not a ranking of performance for every workload.
 | 17 | [OpenCL and integrated GPUs](17-opencl.md) | Device selection, runtime compilation, shared RAM and event timing |
 | 18 | [OpenCL local-memory tiling](18-opencl-tiling.md) | Work-group reuse, padding and uniform barriers |
 | 19 | [OpenCL register tiling](19-opencl-register-tiling.md) | Per-work-item output groups and register reuse |
-| 20 | [OpenCL BLAS](20-opencl-blas.md) | CLBlast, device tuning and complete operation timing |
+| 20 | [Combined OpenCL](20-opencl-combination.md) | Local/register reuse, prefetch and measured dispatch |
+| 21 | [OpenCL BLAS](21-opencl-blas.md) | CLBlast, device tuning and complete operation timing |
 
 Further topics include Tensor Core execution, alternative algorithms and precision, and
 language interoperability. Transposition is another way to explore locality.

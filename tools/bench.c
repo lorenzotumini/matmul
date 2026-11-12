@@ -333,6 +333,11 @@ int main(int argc, char **argv) {
                     matmul_cublas_version());
     }
 #endif
+#ifdef MATMUL_HAVE_OPENCL
+    if (strcmp(selected, "opencl_combined") == 0 || strcmp(selected, "all") == 0)
+        fprintf(metadata, "opencl_combined strategy=%s tuning=offline-fixed-rules\n",
+                matmul_opencl_combined_strategy(m,n,k));
+#endif
 #ifdef MATMUL_HAVE_CLBLAST
     if (strcmp(selected, "clblast") == 0 || strcmp(selected, "all") == 0) {
         const char *options = matmul_clblast_build_options();

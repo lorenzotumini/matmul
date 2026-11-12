@@ -29,7 +29,8 @@ and measuring it against earlier versions.
 17. [OpenCL and integrated GPUs](docs/17-opencl.md): work-items, runtime compilation, shared RAM and device timing.
 18. [OpenCL local-memory tiling](docs/18-opencl-tiling.md): work-group reuse, padded ranges and barriers.
 19. [OpenCL register tiling](docs/19-opencl-register-tiling.md): multiple outputs per work-item and private reuse.
-20. [OpenCL BLAS](docs/20-opencl-blas.md): CLBlast, tuning state and whole-operation measurements.
+20. [Combined OpenCL](docs/20-opencl-combination.md): measured tile selection and software prefetch.
+21. [OpenCL BLAS](docs/21-opencl-blas.md): CLBlast, tuning state and whole-operation measurements.
 
 The benchmark follows this learning order, from CPU implementations and BLAS
 to optional GPU backends. This is an order of complexity; matrix shape and hardware still
@@ -206,10 +207,10 @@ awkward shapes can still favor another kernel or library algorithm.
 ## Intel GPU OpenCL exercise
 
 Completed baselines are `src/opencl_naive.cl` and `src/opencl_tiled.cl`.
-The next [register-tiling exercise](docs/opencl-register-exercise.md) is in
-[`src/opencl_register_tiled.cl`](src/opencl_register_tiled.cl), with TODOs for
-the dot products and cooperative loading. Host plumbing is supplied. Registry
-order is naive, tiled, register tiled, then CLBlast. The runtime selects
+The completed register-tiled baseline is `src/opencl_register_tiled.cl`.
+`opencl_combined` adds measured configuration selection in the host and the
+complete kernel in `src/opencl_combined.cl`. Registry order is naive, tiled,
+register tiled, combined, then CLBlast. The runtime selects
 the first available Intel GPU with a compiler, never a CPU OpenCL device or
 the NVIDIA GPU. A missing Intel GPU is skipped; incorrect output is a failure.
 
@@ -247,10 +248,33 @@ the timing scope, device, driver and reported unified-memory property. CSV
 keeps the existing schema; OpenCL full-call GFLOP/s is blank like CUDA's.
 
 `nob test --cuda --opencl` includes both backends in a separate combined
-build. Until register TODOs are complete, `opencl_register_tiled` and
-`opencl_register_timing` should fail; earlier kernels/library checks remain independent.
+build. Each backend has independent correctness and prepared-timing checks.
 `opencl_timing` checks the naive prepared path. `nob profile` is for CPU captures
 and rejects either GPU opt-in flag.
+
+### Combined OpenCL
+
+The complete reference uses local-memory reuse, strided register output tiles
+and next-tile register prefetch, with no library calls or reduced precision.
+Fast kernels use 16x8 work-items, depth 16, and either 32x64 outputs (4x4
+register tile) or 64x64 outputs (8x4). A fixed dispatcher chooses:
+
+| Ordered condition | Path |
+| --- | --- |
+| M*N*K < 32 cubed | Existing naive kernel |
+| M*N*K < 128 cubed, M < 32, N < 32, K < 16, or M < 128 and N < 512 | Existing register kernel |
+| 128 <= M,N < 512, M*N >= 256 squared, K >= 128 | Prefetched 64x64 |
+| Remaining shapes | Prefetched 32x64 |
+
+These are local Iris Plus heuristics, not a runtime tuner or a guarantee on
+other devices. The same rule chooses source, build options and geometry in
+both timing paths. Sources compile lazily and independently. Metadata reports
+the selected strategy. Allocation, copies and timing rules are unchanged.
+
+```powershell
+.\nob.exe test --opencl --filter 'opencl_combined'
+.\nob.exe bench --opencl -- --impl opencl_combined --m 512 --n 512 --k 512
+```
 
 ### CLBlast reference
 

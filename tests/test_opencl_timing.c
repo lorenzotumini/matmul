@@ -58,11 +58,19 @@ static bool checks(void) {
     const size_t shapes[][3] = {{16,16,16}, {17,31,33}, {33,17,65}, {65,63,129}, {129,257,259}};
     for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; ++i)
         REQUIRE(prepared_case(shapes[i][0], shapes[i][1], shapes[i][2]));
+    if (selected == matmul_opencl_combined) {
+        REQUIRE(prepared_case(256,256,129)); /* 64x64 path. */
+        REQUIRE(prepared_case(255,257,129)); /* 32x64 path below area threshold. */
+        REQUIRE(prepared_case(257,257,129)); /* 64x64 path with all tails. */
+        REQUIRE(prepared_case(513,515,129)); /* Large path and all tails. */
+        REQUIRE(prepared_case(32,513,129)); /* Short-wide path. */
+    }
     return true;
 }
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--tiled") == 0) selected = matmul_opencl_tiled;
     else if (argc == 2 && strcmp(argv[1], "--register") == 0) selected = matmul_opencl_register_tiled;
+    else if (argc == 2 && strcmp(argv[1], "--combined") == 0) selected = matmul_opencl_combined;
 #ifdef MATMUL_HAVE_CLBLAST
     else if (argc == 2 && strcmp(argv[1], "--clblast") == 0) selected = matmul_clblast;
 #endif

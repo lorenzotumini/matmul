@@ -1,4 +1,4 @@
-# 20 — Comparing OpenCL multiplication with BLAS
+# 21 — Comparing OpenCL multiplication with BLAS
 
 An OpenCL BLAS library supplies tuned matrix operations over device buffers.
 Float32 SGEMM computes `C = alpha*A*B + beta*C`; alpha=1 and beta=0 express

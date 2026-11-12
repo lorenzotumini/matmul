@@ -66,6 +66,8 @@ void matmul_opencl_register_tiled(size_t m, size_t n, size_t k,
                                   const float *a, const float *b, float *c);
 void matmul_clblast(size_t m, size_t n, size_t k,
                     const float *a, const float *b, float *c);
+void matmul_opencl_combined(size_t m, size_t n, size_t k,
+                            const float *a, const float *b, float *c);
 /* Optional CUDA library reference; same host-array contract. */
 void matmul_cublas(size_t m, size_t n, size_t k,
                     const float *a, const float *b, float *c);

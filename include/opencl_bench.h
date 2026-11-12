@@ -13,6 +13,7 @@ typedef struct MatmulOpenCLBenchmark MatmulOpenCLBenchmark;
 const char *matmul_opencl_device_name(void);
 const char *matmul_opencl_driver_version(void);
 bool matmul_opencl_host_unified_memory(void);
+const char *matmul_opencl_combined_strategy(size_t m, size_t n, size_t k);
 #ifdef MATMUL_HAVE_CLBLAST
 const char *matmul_clblast_version(void);
 const char *matmul_clblast_build_options(void);

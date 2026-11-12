@@ -215,7 +215,7 @@ N-by-M global counts and driver-chosen local sizes. The tiled path uses 16x16
 local sizes and global counts rounded up to multiples of 16 in both host and
 prepared launches. Every edge work-item participates in cooperation; loads
 are padded and output stores guarded. The naive prepared test remains separate
-from `opencl_tiled_timing`. Register-tiling checks fail until its exercise is complete.
+from `opencl_tiled_timing`. Each completed backend has separate prepared timing checks.
 
 Register tiling uses 16x16 work-items per 32x32 output tile and depth 16;
 its global counts are ceil(N/32)*16 by ceil(M/32)*16 in both timing paths.
@@ -243,3 +243,10 @@ Other drivers retain builtin detection. This preserves arithmetic/default
 tuning but changes compiler hints; report the effective flags with results.
 The adapter preserves user options and ensures a trailing separator because
 CLBlast 1.7.0 concatenates its additional compiler options directly.
+
+Combined OpenCL uses the same host/prepared lifecycle, double oracle and
+custom first-START to last-END device timing. A fixed shape dispatcher selects
+naive/register fallbacks or 16x8 work-groups covering prefetched 32x64/64x64
+output tiles. No runtime tuning is charged or hidden. Build options include
+only geometry/prefetch macros and OpenCL C 1.2; record selected strategy in
+metadata. Validate threshold boundaries and partial tiles for each path.

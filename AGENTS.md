@@ -34,12 +34,12 @@ matrix multiplication kernels manually to understand the basics.
 
 # GPU exercises
 
-- Preserve completed `src/opencl_naive.cl` and `src/opencl_tiled.cl` baselines.
-  `src/opencl_register_tiled.cl` is intentionally unfinished; leave its TODOs
-  for the user. It uses 16x16 work-items, 32x32 output tiles and depth 16 in
-  both timing paths. Host plumbing belongs in `src/opencl_support.c`.
-  Compile sources independently so exercises cannot break completed kernels.
-  Use `nob test --opencl --filter opencl_register` to focus on the exercise.
+- Preserve completed naive, tiled and register-tiled OpenCL baselines.
+  `src/opencl_combined.cl` is a complete user-requested reference. Keep its
+  fixed dispatcher, build macros and launch geometry aligned in both timing
+  paths. Fast paths use 16x8 work-items with 32x64 or 64x64 output tiles;
+  fallbacks reuse earlier kernels. Keep source compilation lazy/independent.
+  No runtime tuning search, library substitution or reduced precision.
 - CLBlast is an optional complete SGEMM reference on the same Intel GPU.
   Preserve float32 row-major alpha=1/beta=0 and default tuning metadata.
   Device timings must enclose the complete operation with markers, including
